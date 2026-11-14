@@ -44,7 +44,7 @@ The live gallery fetches metadata first, without loading output artifacts. It fe
 
 Every gallery card has a **Permalink** (`?run=RUN_ID`). Filter changes update the URL, so copying the address shares the same view; reload and browser back/forward restore it. Existing `?compare=ID,ID` links still work, and comparison column counts can also be shared. URLs use query parameters so they work directly on GitHub Pages without server routing.
 
-**Prompts** (`?view=prompts`) shows a responsive grid of prompts with completed results. Each card has one title and a version selector, defaulting to the latest version. Changing versions updates the title, text, and clickable result count; the count links to that version's filtered gallery. Prompts without results are hidden.
+**Prompts** (`?view=prompts`) shows a responsive grid of prompts with completed results. Each card has one title and a version selector, defaulting to the latest version. Changing versions updates the title, text, and clickable result count; the count links to that version's filtered gallery. Prompts without completed results are hidden from the directory and the Results/Scatterplot prompt filters. Admin prompt management and New run retain unused prompts so they can be edited and run.
 
 Version selectors appear only when there is more than one version to choose from, including admin prompt cards, New run, gallery prompt cards, and gallery/chart version filters. Single-version prompts use their sole version automatically.
 

@@ -366,9 +366,13 @@ function withPrompt(run) {
   const version = promptIndex().find(p => p.id === run.prompt_id)?.versions.find(v => v.id === run.version_id || v.version === run.version);
   return { ...run, prompt_content: version?.content || 'Prompt text unavailable.' };
 }
+function promptsWithResults() {
+  const completedPrompts = new Set(data.runs.map(run => run.prompt_id));
+  return promptIndex().filter(p => completedPrompts.has(p.id));
+}
 function filterOptions(key) {
   const runs = analytics();
-  if (key === 'prompt') return [['', 'All prompts'], ...promptIndex().map(p => [p.id, p.title])];
+  if (key === 'prompt') return [['', 'All prompts'], ...promptsWithResults().map(p => [p.id, p.title])];
   if (key === 'model') return [['', 'All models'], ...new Map(runs.map(r => [r.model_id, name(r.model_name)]))];
   if (key === 'effort') return reasoningFilterOptions;
   if (key === 'version') return [['', 'All versions'], ...[...new Set(runs.filter(r => !prompt || r.prompt_id === prompt).map(r => r.version))]
@@ -395,8 +399,7 @@ function syncFilterControls() {
   }
 }
 function renderPromptIndex() {
-  const completedPrompts = new Set(data.runs.map(run => run.prompt_id));
-  const prompts = promptIndex().filter(p => completedPrompts.has(p.id));
+  const prompts = promptsWithResults();
   pageHost.replaceChildren(navigation(), h('main', { class: 'gallery-content' },
     h('div', { class: 'section-heading' }, h('h1', {}, 'Prompts'), badge(prompts.length + ' prompts')),
     prompts.length ? h('div', { class: 'public-prompts' }, prompts.map(p => {
