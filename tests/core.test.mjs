@@ -101,6 +101,37 @@ test('drafts edit in place; run submission freezes versions and configuration', 
   assert.equal(noChange.version, 2);
   store.close();
 });
+test('explicit versions rerun historical prompts and defaults still select latest', () => {
+  const { store, prompt } = fixture();
+  store.enqueue([prompt.id], ['test/a']);
+  const originalLock = store.prompt(prompt.id).locked_at;
+  const latest = store.editPrompt(prompt.id, { title: 'Version two', category: 'Changed',
+    content: 'Build the new version.', baseVersionId: prompt.version_id });
+  const other = store.createPrompt({ title: 'Other', category: 'Test', content: 'Other prompt' });
+  const before = store.runs().length;
+  for (const versions of [null, [], 'v1', { [prompt.id]: 1 }, { extra: prompt.version_id },
+    { [prompt.id]: 'missing' }, { [prompt.id]: other.version_id }]) {
+    assert.throws(() => store.enqueue([other.id, prompt.id], ['test/a'], {}, versions));
+    assert.equal(store.runs().length, before);
+    assert.equal(store.prompt(other.id).locked_at, null);
+    assert.equal(store.prompt(prompt.id).locked_at, null);
+  }
+  const batch = store.enqueue([prompt.id, other.id], ['test/a', 'test/b'], {}, { [prompt.id]: prompt.version_id });
+  assert.equal(batch.ids.length, 4);
+  const historical = store.run(batch.ids[0]);
+  assert.equal(historical.version_id, prompt.version_id);
+  assert.equal(historical.prompt_content, prompt.content);
+  assert.equal(historical.prompt_title, prompt.title);
+  assert.equal(store.prompt(prompt.id).locked_at, null);
+  assert.equal(store.prompt(prompt.id).versions[1].locked_at, originalLock);
+  assert.equal(store.run(batch.ids[2]).version_id, other.version_id);
+  const newest = store.enqueue([prompt.id], ['test/a']);
+  assert.equal(store.run(newest.ids[0]).version_id, latest.version_id);
+  assert.ok(store.prompt(prompt.id).locked_at);
+  store.archivePrompt(prompt.id, true);
+  assert.throws(() => store.enqueue([prompt.id], ['test/a'], {}, { [prompt.id]: prompt.version_id }));
+  store.close();
+});
 test('invalid batches roll back without freezing drafts', () => {
   const { store, prompt } = fixture();
   assert.throws(() => store.enqueue([prompt.id], ['unknown/model']), /available prompts/);
@@ -304,6 +335,14 @@ test('admin API validates input, protects mutations, and never returns credentia
   });
   assert.equal(result.status, 201);
   assert.equal((await result.json()).ids.length, 1);
+  store.editPrompt(prompt.id, { title: 'Next', category: 'Test', content: 'New content', baseVersionId: prompt.version_id });
+  const rerun = await request('/api/runs', { promptIds: [prompt.id], modelIds: ['test/a'],
+    promptVersions: { [prompt.id]: prompt.version_id } });
+  assert.equal(rerun.status, 201);
+  assert.equal(store.run((await rerun.json()).ids[0]).prompt_content, prompt.content);
+  assert.equal(store.prompt(prompt.id).locked_at, null);
+  assert.equal((await request('/api/runs', { promptIds: [prompt.id], modelIds: ['test/a'],
+    promptVersions: { [prompt.id]: 'missing' } })).status, 400);
   const gallery = await (await fetch(`${base}/api/gallery`)).json();
   assert.equal(gallery.runs.length, 0);
   assert.ok(!('selectedModels' in gallery.settings));

@@ -89,6 +89,24 @@ test('Cloudflare SQLite adapter preserves versions and queue concurrency without
   assert.equal(store.run(ids[1]).status, 'cancelled');
 });
 
+test('hosted run API selects historical versions without locking the newest draft', async t => {
+  const { store, workspace } = fixture(t);
+  const prompt = store.createPrompt({ title: 'Original', category: 'Test', content: 'Original text' });
+  store.enqueue([prompt.id], ['test/model']);
+  const latest = store.editPrompt(prompt.id, { title: 'Latest', category: 'Test', content: 'Latest text', baseVersionId: prompt.version_id });
+  const body = { promptIds: [prompt.id], modelIds: ['test/model'], promptVersions: { [prompt.id]: prompt.version_id } };
+  const response = await workspace.fetch(request('/api/runs', body));
+  assert.equal(response.status, 201);
+  const run = store.run((await response.json()).ids[0]);
+  assert.equal(run.version_id, prompt.version_id);
+  assert.equal(run.prompt_content, prompt.content);
+  assert.equal(store.prompt(prompt.id).locked_at, null);
+  assert.equal((await workspace.fetch(request('/api/runs', { ...body, promptVersions: { [prompt.id]: 'missing' } }))).status, 400);
+  delete body.promptVersions;
+  const next = await workspace.fetch(request('/api/runs', body));
+  assert.equal(store.run((await next.json()).ids[0]).version_id, latest.version_id);
+});
+
 test('a failed artifact write cannot cause another model request', async t => {
   const { store, workspace, env, jobs } = fixture(t);
   const p = store.createPrompt({ title: 'Test', category: 'Test', content: 'Build' });

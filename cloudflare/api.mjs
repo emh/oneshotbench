@@ -89,7 +89,7 @@ export async function api(request, workspace) {
     const overrides = {};
     if ('temperature' in body) overrides.temperature = number(body.temperature, 0, 2, 'Temperature');
     if ('maxTokens' in body) overrides.maxTokens = number(body.maxTokens, 256, 128000, 'Output tokens', true);
-    const result = store.enqueue(promptIds, modelIds, overrides);
+    const result = store.enqueue(promptIds, modelIds, overrides, body.promptVersions);
     await workspace.wake();
     return json(result, 201);
   }

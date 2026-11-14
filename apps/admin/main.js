@@ -31,6 +31,7 @@ const filters = {
 };
 let selected = new Set(),
   settingsDraft = null;
+const viewedVersions = new Map();
 async function refresh() {
   try {
     const next = await api('/state');
@@ -295,8 +296,10 @@ function renderRuns(container) {
       ),
     );
 }
-function newRun() {
-  const promptIds = new Set(),
+function newRun(initialPromptId, initialVersionId) {
+  const promptIds = new Set(initialPromptId ? [initialPromptId] : []),
+    promptVersions = Object.fromEntries(state.prompts.map(p => [p.id,
+      p.id === initialPromptId ? initialVersionId || p.version_id : p.version_id])),
     modelIds = new Set(state.settings.selectedModels.map((m) => m.id));
   let temperature = state.settings.temperature,
     maxTokens = state.settings.maxTokens;
@@ -312,7 +315,8 @@ function newRun() {
         await mutate(
           '/runs',
           'POST',
-          { promptIds: [...promptIds], modelIds: [...modelIds], temperature, maxTokens },
+          { promptIds: [...promptIds], modelIds: [...modelIds], temperature, maxTokens,
+            promptVersions: Object.fromEntries([...promptIds].map(id => [id, promptVersions[id]])) },
           'Run submitted',
         );
         dialog.close();
@@ -368,7 +372,17 @@ function newRun() {
       h(
         'div',
         { class: 'choices', 'data-prompts': '' },
-        state.prompts.map((p) => choice(p.id, p.title, 'v' + p.version, promptIds)),
+        state.prompts.map((p) => {
+          const title = h('span', {}, p.versions.find(v => v.id === promptVersions[p.id]).title);
+          const version = select('Run version for ' + p.title,
+            p.versions.map(v => [v.id, 'v' + v.version + (v.id === p.version_id ? ' · latest' : '')]),
+            promptVersions[p.id], id => {
+              promptVersions[p.id] = id;
+              title.textContent = p.versions.find(v => v.id === id).title;
+            });
+          return h('div', { class: 'prompt-choice' },
+            choice(p.id, title, '', promptIds), version);
+        }),
       ),
     ),
     h(
@@ -446,35 +460,57 @@ function renderPrompts(container) {
       'div',
       { class: 'prompt-list' },
       state.prompts
-        .filter((p) => (p.title + ' ' + p.content).toLowerCase().includes(f.search.toLowerCase()))
-        .map((p) =>
+        .map(p => {
+          const v = p.versions.find(v => v.id === viewedVersions.get(p.id)) || p.versions[0];
+          return { p, v };
+        })
+        .filter(({ v }) => (v.title + ' ' + v.content).toLowerCase().includes(f.search.toLowerCase()))
+        .map(({ p, v }) =>
           h(
             'article',
             { class: 'prompt-card' },
             h(
               'div',
               { class: 'section-heading' },
-              button(p.title, () => editPrompt(p), 'text title'),
+              button(v.title, () => viewPromptVersion(p, v), 'text title'),
               h(
                 'div',
                 { class: 'actions' },
-                badge(p.category),
-                badge('v' + p.version),
-                badge(p.locked_at ? 'locked' : 'draft'),
+                badge(v.category),
+                select('View version for ' + p.title,
+                  p.versions.map(version => [version.id, 'v' + version.version + (version.id === p.version_id ? ' · latest' : '')]),
+                  v.id, id => {
+                    if (id === p.version_id) viewedVersions.delete(p.id);
+                    else viewedVersions.set(p.id, id);
+                    render();
+                  }),
+                badge(v.locked_at ? 'locked' : 'draft'),
                 button('×', () => archive(p), 'icon', { 'aria-label': 'Archive ' + p.title }),
               ),
             ),
-            h('p', { class: 'prompt-content' }, p.content),
+            h('p', { class: 'prompt-content' }, v.content),
             h(
               'footer',
               {},
-              h('code', {}, p.run_count + ' runs'),
-              button('Edit', () => editPrompt(p), 'text'),
+              h('code', {}, state.runs.filter(r => r.version_id === v.id).length + ' runs'),
+              h('div', { class: 'actions' },
+                button('View', () => viewPromptVersion(p, v), 'text'),
+                button(v.id === p.version_id ? 'Edit' : 'Edit latest', () => editPrompt(p), 'text'),
+                button('Run v' + v.version, () => newRun(p.id, v.id), 'text')),
             ),
           ),
         ),
     ),
   );
+}
+function viewPromptVersion(p, v) {
+  let dialog;
+  dialog = modal(v.title + ' · v' + v.version,
+    h('div', {}, badge(v.locked_at ? 'locked' : 'draft'), h('pre', {}, v.content)),
+    [button('Close', () => dialog.close()), button('Run v' + v.version, () => {
+      dialog.close();
+      newRun(p.id, v.id);
+    }, 'primary')]);
 }
 function editPrompt(p) {
   let title = p?.title || '',

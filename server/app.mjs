@@ -172,7 +172,7 @@ export function createApp({
             overrides.temperature = number(body.temperature, 0, 2, 'Temperature');
           if ('maxTokens' in body)
             overrides.maxTokens = number(body.maxTokens, 256, 128000, 'Output tokens', true);
-          const result = store.enqueue(promptIds, modelIds, overrides);
+          const result = store.enqueue(promptIds, modelIds, overrides, body.promptVersions);
           runner.pump();
           return json(res, 201, result);
         }

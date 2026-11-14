@@ -127,13 +127,22 @@ export class StoreCore {
   archivePrompt(id, archived) {
     return this.db.prepare('UPDATE prompts SET archived=? WHERE id=?').run(archived ? 1 : 0, id);
   }
-  enqueue(promptIds, modelIds, overrides = {}) {
+  enqueue(promptIds, modelIds, overrides = {}, promptVersions = {}) {
+    if (!promptVersions || typeof promptVersions !== 'object' || Array.isArray(promptVersions) ||
+      Object.entries(promptVersions).some(([id, version]) => !promptIds.includes(id) || typeof version !== 'string' || !version))
+      throw Object.assign(new Error('Choose a valid version for each selected prompt.'), { status: 400 });
     return this.transaction(() => {
       const settings = this.settings(),
         batchId = crypto.randomUUID(),
         now = new Date().toISOString();
       const models = modelIds.map((id) => settings.selectedModels.find((m) => m.id === id));
-      const prompts = promptIds.map((id) => this.prompt(id));
+      const prompts = promptIds.map((id) => {
+        const prompt = this.prompt(id);
+        if (!prompt || !Object.hasOwn(promptVersions, id)) return prompt;
+        const version = prompt.versions.find(v => v.id === promptVersions[id]);
+        if (!version) throw Object.assign(new Error('The selected version does not belong to this prompt.'), { status: 400 });
+        return { ...prompt, version_id: version.id };
+      });
       if (models.some((m) => !m) || prompts.some((p) => !p || p.archived))
         throw Object.assign(new Error('Choose available prompts and enabled models.'), {
           status: 400,

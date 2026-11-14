@@ -542,10 +542,9 @@ td small {
   color: #9298a6;
   line-height: 1.8;
   margin: 14px 0;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+  white-space: pre-wrap;
+  max-height: 240px;
+  overflow: auto;
   min-height: 64px;
 }
 .prompt-card footer,
@@ -693,6 +692,17 @@ dialog::backdrop {
 .choices > .button {
   margin: 20px;
 }
+.prompt-choice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-right: 12px;
+  border-bottom: 1px solid var(--line);
+}
+.prompt-choice:last-child { border-bottom: 0; }
+.prompt-choice .choice { flex: 1; min-width: 0; border: 0; }
+.prompt-choice select { width: auto; flex-shrink: 0; }
+.prompt-card .actions select { width: auto; }
 .version {
   margin: 10px 0;
 }
