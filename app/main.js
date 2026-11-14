@@ -331,16 +331,23 @@ function renderPromptIndex() {
     prompts.length ? h('div', { class: 'public-prompts' }, prompts.map(p => {
       const versions = [...p.versions].sort((a, b) => b.version - a.version), latest = versions[0];
       const runs = data.runs.filter(r => r.prompt_id === p.id);
-      const resultsURL = v => galleryURL(location.href, { prompt: p.id, ...(v ? { version: String(v) } : {}) }).href;
-      const versionContent = v => h('section', { class: 'public-prompt-version' },
-        h('div', { class: 'section-heading' }, h('h3', {}, v.title + ' · v' + v.version),
-          pageLink('View results (' + runs.filter(r => r.version === v.version).length + ')', resultsURL(v.version))),
-        h('pre', {}, v.content));
+      const title = h('h2', {}), text = h('pre', {}), resultCount = h('div', { class: 'actions' });
+      function showVersion(v) {
+        title.textContent = v.title;
+        text.textContent = v.content;
+        const count = runs.filter(r => r.version === v.version).length;
+        resultCount.replaceChildren(...[
+          p.archived ? badge('archived') : null,
+          pageLink(count + (count === 1 ? ' result' : ' results'),
+            galleryURL(location.href, { prompt: p.id, version: String(v.version) }).href, 'badge prompt-results'),
+        ].filter(Boolean));
+      }
+      const versionSelect = select('Version for ' + p.title,
+        versions.map(v => [String(v.version), 'v' + v.version]), String(latest.version),
+        value => showVersion(versions.find(v => String(v.version) === value)));
+      showVersion(latest);
       return h('article', { class: 'panel public-prompt', 'data-prompt-id': p.id },
-        h('div', { class: 'section-heading' }, h('h2', {}, pageLink(p.title, resultsURL())),
-          h('div', { class: 'actions' }, p.archived ? badge('archived') : null, badge(runs.length + ' results'))),
-        latest ? versionContent(latest) : null,
-        versions.length > 1 ? h('details', {}, h('summary', {}, 'Previous versions (' + (versions.length - 1) + ')'), versions.slice(1).map(versionContent)) : null);
+        h('div', { class: 'section-heading' }, h('div', { class: 'public-prompt-title' }, title, versionSelect), resultCount), text);
     })) : empty('No prompts with results')));
 }
 function svgElement(tag, attrs = {}, ...children) {
