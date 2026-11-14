@@ -15,7 +15,7 @@ import {
   errorBox,
   preview,
 } from '../shared/dom.js';
-import { readGalleryURL, galleryURL, matchesRun, plotData } from '../shared/gallery.js';
+import { readGalleryURL, galleryURL, matchesRun, plotData, plotAxes } from '../shared/gallery.js';
 const root = document.getElementById('root');
 let data,
   selected = new Set(),
@@ -23,7 +23,7 @@ let data,
   columns = null,
   prompt = '',
   model = '',
-  effort = '', version = '', batch = '', status = '', view = 'gallery', metric = 'total';
+  effort = '', version = '', batch = '', status = '', view = 'gallery', metric = 'total', axes = 'cost-tokens', hiddenModels = [];
 let gallerySynced = false;
 let promptTrigger, promptCloseTimer;
 const promptPopup = h('div', { id: 'prompt-popup', class: 'prompt-popup', role: 'tooltip', hidden: true,
@@ -103,9 +103,9 @@ document.addEventListener('scroll', event => {
   if (!promptPopup.contains(event.target)) closePrompt();
   if (!plotPopup.contains(event.target)) positionPlot();
 }, true);
-function routeState() { return { compare, columns, prompt, model, effort, version, batch, status, view, metric }; }
+function routeState() { return { compare, columns, prompt, model, effort, version, batch, status, view, metric, axes, hiddenModels }; }
 function readURL() {
-  ({ compare, columns, prompt, model, effort, version, batch, status, view, metric } = readGalleryURL(location.search));
+  ({ compare, columns, prompt, model, effort, version, batch, status, view, metric, axes, hiddenModels } = readGalleryURL(location.search));
 }
 function urlFor(patch = {}) { return galleryURL(location.href, { ...routeState(), ...patch }).href; }
 function runURL(id) { return galleryURL(location.href, { compare: [id] }).href; }
@@ -128,7 +128,7 @@ function navigation() {
   return h('header', { class: 'gallery-header' },
     pageLink('⌘ ONESHOT', galleryURL(location.href, {}).href, 'brand'),
     h('nav', { class: 'gallery-nav', 'aria-label': 'Gallery navigation' },
-      [['gallery', 'Results'], ['prompts', 'Prompts'], ['scatter', 'Cost & tokens']].map(([id, label]) =>
+      [['gallery', 'Results'], ['prompts', 'Prompts'], ['scatter', 'Scatterplot']].map(([id, label]) =>
         pageLink(label, urlFor({ view: id, compare: [], ...(id === 'gallery' ? { status: '' } : {}) }), view === id ? 'active' : ''))));
 }
 window.addEventListener('popstate', () => {
@@ -350,48 +350,65 @@ function svgElement(tag, attrs = {}, ...children) {
   return node;
 }
 function renderScatter() {
-  const { points, missing } = plotData(analytics(), routeState(), metric);
+  const { points, models, missing } = plotData(analytics(), routeState(), metric);
+  const pair = plotAxes[axes];
   const metricNames = { total: 'Total tokens', input: 'Input tokens', output: 'Output tokens', reasoning: 'Reasoning tokens' };
-  const countLabel = points.length + ' plotted' + (missing ? ' · ' + missing + ' missing cost/tokens' : '');
+  const axisNames = { cost: 'Cost (USD)', time: 'Time (seconds)', tokens: metricNames[metric] };
+  const countLabel = points.length + ' plotted' + (missing ? ' · ' + missing + ' missing ' + pair.y + '/' + pair.x : '');
   const controls = h('div', { class: 'toolbar standalone' },
+    select('Plot axes', Object.entries(plotAxes).map(([id, pair]) => [id, pair.label]), axes, next => navigate(urlFor({ axes: next }))),
     filterSelect('Filter chart by prompt', 'prompt'), filterSelect('Filter chart by model', 'model'),
     filterSelect('Filter chart by reasoning level', 'effort'), filterSelect('Filter chart by prompt version', 'version'),
     filterSelect('Filter chart by batch', 'batch'), filterSelect('Filter chart by status', 'status'),
-    select('Token metric', Object.entries(metricNames), metric, next => navigate(urlFor({ metric: next }))), badge(countLabel));
+    pair.x === 'tokens' ? select('Token metric', Object.entries(metricNames), metric, next => navigate(urlFor({ metric: next }))) : null, badge(countLabel));
   const content = h('main', { class: 'gallery-content scatter-content' },
-    h('h1', {}, 'Cost & tokens'), controls);
+    h('h1', {}, 'Scatterplot'), controls);
   pageHost.replaceChildren(navigation(), content);
-  if (!points.length) { content.append(empty('No runs with recorded cost and token usage match these filters.')); return; }
   const modelIDs = [...new Set(analytics().map(r => r.model_id))].sort();
   const color = id => `hsl(${(modelIDs.indexOf(id) * 137.5 + 210) % 360} 65% 72%)`;
+  const legend = h('div', { class: 'plot-legend', 'aria-label': 'Model visibility' }, models.map(([id, label]) =>
+    h('button', { type: 'button', 'data-model-id': id, 'aria-pressed': String(!hiddenModels.includes(id)),
+      onClick: () => {
+        navigate(urlFor({ hiddenModels: hiddenModels.includes(id) ? hiddenModels.filter(value => value !== id) : [...hiddenModels, id] }));
+        [...pageHost.querySelectorAll('.plot-legend button')].find(node => node.dataset.modelId === id)?.focus({ preventScroll: true });
+      },
+    }, h('i', { style: { background: color(id) } }), name(label))));
+  if (!points.length) {
+    content.append(h('div', { class: 'panel plot-panel' }, empty('No runs to plot'), legend));
+    return;
+  }
   const width = 1100, height = 560, left = 85, right = 30, top = 24, bottom = 65;
-  const maxTokens = points.reduce((max, p) => Math.max(max, p.tokens), 1) * 1.05;
-  const maxCost = points.reduce((max, p) => Math.max(max, p.cost), 0.000001) * 1.05;
-  const x = value => left + value / maxTokens * (width - left - right);
-  const y = value => height - bottom - value / maxCost * (height - top - bottom);
+  const maxX = points.reduce((max, p) => Math.max(max, p.x), 0.000001) * 1.05;
+  const maxY = points.reduce((max, p) => Math.max(max, p.y), 0.000001) * 1.05;
+  const x = value => left + value / maxX * (width - left - right);
+  const y = value => height - bottom - value / maxY * (height - top - bottom);
   const svg = svgElement('svg', { viewBox: `0 0 ${width} ${height}`, class: 'scatterplot', role: 'group',
-    'aria-label': 'Recorded cost in USD versus ' + metricNames[metric].toLowerCase() });
+    'aria-label': axisNames[pair.y] + ' versus ' + axisNames[pair.x] });
   const tickTokens = n => new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(n);
   const tickCost = n => '$' + new Intl.NumberFormat(undefined, { maximumSignificantDigits: 3 }).format(n);
+  const tick = (key, n) => key === 'cost' ? tickCost(n) : key === 'tokens' ? tickTokens(n) :
+    new Intl.NumberFormat(undefined, { maximumSignificantDigits: 3 }).format(n);
   for (let i = 0; i <= 5; i++) {
-    const tx = maxTokens * i / 5, cy = maxCost * i / 5;
+    const tx = maxX * i / 5, cy = maxY * i / 5;
     svg.append(svgElement('line', { x1: x(tx), x2: x(tx), y1: top, y2: height - bottom, class: 'plot-grid' }),
       svgElement('line', { x1: left, x2: width - right, y1: y(cy), y2: y(cy), class: 'plot-grid' }),
-      svgElement('text', { x: x(tx), y: height - bottom + 24, 'text-anchor': 'middle' }, tickTokens(tx)),
-      svgElement('text', { x: left - 12, y: y(cy) + 4, 'text-anchor': 'end' }, tickCost(cy)));
+      svgElement('text', { x: x(tx), y: height - bottom + 24, 'text-anchor': 'middle' }, tick(pair.x, tx)),
+      svgElement('text', { x: left - 12, y: y(cy) + 4, 'text-anchor': 'end' }, tick(pair.y, cy)));
   }
-  svg.append(svgElement('text', { x: width / 2, y: height - 12, 'text-anchor': 'middle', class: 'plot-axis' }, metricNames[metric]),
-    svgElement('text', { x: 18, y: height / 2, 'text-anchor': 'middle', transform: `rotate(-90 18 ${height / 2})`, class: 'plot-axis' }, 'Cost (USD)'));
+  svg.append(svgElement('text', { x: width / 2, y: height - 12, 'text-anchor': 'middle', class: 'plot-axis' }, axisNames[pair.x]),
+    svgElement('text', { x: 18, y: height / 2, 'text-anchor': 'middle', transform: `rotate(-90 18 ${height / 2})`, class: 'plot-axis' }, axisNames[pair.y]));
   function showPoint(point, trigger) {
     closePlot();
-    const { run, tokens: used, cost } = point;
+    const { run, tokens: used, cost, time } = point;
     plotTrigger = trigger;
     trigger.setAttribute('aria-describedby', plotPopup.id);
     trigger.querySelector('.plot-point').classList.add('inspected');
     plotPopup.replaceChildren(
       h('div', { class: 'section-heading' }, h('strong', {}, runModelName(run)), badge(run.status, run.status)),
       h('div', {}, run.prompt_title + ' · v' + run.version),
-      h('div', { class: 'actions' }, h('code', {}, '$' + cost), h('code', {}, used.toLocaleString() + ' ' + metricNames[metric].toLowerCase())),
+      h('div', { class: 'actions' }, h('code', {}, cost === null ? 'Cost —' : '$' + cost),
+        h('code', {}, time === null ? 'Time —' : time.toLocaleString(undefined, { maximumFractionDigits: 1 }) + ' s'),
+        h('code', {}, (used === null ? '—' : used.toLocaleString()) + ' ' + metricNames[metric].toLowerCase())),
       tokens(run.metrics),
       h('div', { class: 'actions' }, h('code', {}, new Date(run.created_at).toLocaleString()), h('code', {}, run.id.slice(0, 8))));
     plotPopup.hidden = false;
@@ -399,9 +416,9 @@ function renderScatter() {
   }
   for (const point of points) {
     const r = point.run, label = runModelName(r) + ' · ' + r.prompt_title + ' · v' + r.version + ' · ' +
-      point.tokens.toLocaleString() + ' tokens · ' + tickCost(point.cost) + ' · ' + r.status + ' · ' + r.id;
+      axisNames[pair.x] + ': ' + tick(pair.x, point.x) + ' · ' + axisNames[pair.y] + ': ' + tick(pair.y, point.y) + ' · ' + r.status + ' · ' + r.id;
     const link = svgElement('a', { href: runURL(r.id), 'aria-label': label },
-      svgElement('circle', { cx: x(point.tokens), cy: y(point.cost), r: 6, fill: color(r.model_id),
+      svgElement('circle', { cx: x(point.x), cy: y(point.y), r: 6, fill: color(r.model_id),
         class: 'plot-point', 'data-run-id': r.id }));
     link.addEventListener('pointerenter', () => showPoint(point, link));
     link.addEventListener('pointerleave', schedulePlotClose);
@@ -413,8 +430,6 @@ function renderScatter() {
     });
     svg.append(link);
   }
-  const legend = h('div', { class: 'plot-legend' }, [...new Map(points.map(p => [p.run.model_id, name(p.run.model_name)]))].map(([id, label]) =>
-    h('span', {}, h('i', { style: { background: color(id) } }), label)));
   content.append(h('div', { class: 'panel plot-panel' }, svg, legend));
 }
 function render() {

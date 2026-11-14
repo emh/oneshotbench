@@ -5,7 +5,8 @@ import { Store } from '../server/store.mjs';
 
 test('gallery links round-trip filters, special model IDs, and single/multiple result routes', () => {
   const state = { view: 'scatter', prompt: 'p', model: '~qwen/a+b:free', effort: 'high', version: '2',
-    batch: 'batch', status: 'failed', metric: 'reasoning', compare: [], columns: null };
+    batch: 'batch', status: 'failed', metric: 'reasoning', compare: [], columns: null,
+    axes: 'time-tokens', hiddenModels: ['~qwen/a+b:free', 'provider/model,variant'] };
   const url = galleryURL('https://example.com/project/?old=value#stale', state);
   assert.equal(url.pathname, '/project/');
   assert.deepEqual(readGalleryURL(url.search), state);
@@ -16,6 +17,29 @@ test('gallery links round-trip filters, special model IDs, and single/multiple r
   assert.equal(readGalleryURL('?columns=100&tokens=bogus&view=unknown').columns, null);
   assert.equal(readGalleryURL('?columns=100&tokens=bogus&view=unknown').metric, 'total');
   assert.equal(readGalleryURL('?compare=' + Array.from({ length: 12 }, (_, i) => i).join(',')).compare.length, 9);
+  assert.equal(readGalleryURL('?axes=unknown').axes, 'cost-tokens');
+  assert.deepEqual(readGalleryURL('?hideModel=m&hideModel=m&hideModel=').hiddenModels, ['m']);
+});
+
+test('scatterplot axis pairs use recorded seconds and only require the selected metrics', () => {
+  const runs = [
+    { id: 'all', model_id: 'a', model_name: 'A', metrics: { durationMs: 12500, totalTokens: 100, cost: .2 } },
+    { id: 'no-cost', model_id: 'b', model_name: 'B', metrics: { durationMs: 0, totalTokens: 0 } },
+    { id: 'no-tokens', model_id: 'a', model_name: 'A', metrics: { durationMs: 2000, cost: 0 } },
+    { id: 'no-time', model_id: 'c', model_name: 'C', metrics: { totalTokens: 50, cost: .1 } },
+  ];
+  const values = axes => plotData(runs, { axes }, 'total').points.map(p => [p.run.id, p.x, p.y]);
+  assert.deepEqual(values('cost-tokens'), [['all', 100, .2], ['no-time', 50, .1]]);
+  assert.deepEqual(values('cost-time'), [['all', 12.5, .2], ['no-tokens', 2, 0]]);
+  assert.deepEqual(values('time-tokens'), [['all', 100, 12.5], ['no-cost', 0, 0]]);
+  const hidden = plotData(runs, { axes: 'cost-time', hiddenModels: ['a'] }, 'total');
+  assert.equal(hidden.points.length, 0);
+  assert.deepEqual(hidden.models, [['a', 'A'], ['b', 'B'], ['c', 'C']]);
+  assert.equal(hidden.missing, 2);
+  const allHidden = plotData(runs, { hiddenModels: ['a', 'b', 'c'] }, 'total');
+  assert.equal(allHidden.points.length, 0);
+  assert.equal(allHidden.missing, 0);
+  assert.equal(allHidden.models.length, 3);
 });
 
 test('plot data retains zero cost, excludes missing metrics, and never double-counts reasoning tokens', () => {
