@@ -34,6 +34,8 @@ The gallery groups completed results by batch, newest first, with the submission
 
 In **New run**, each **All** checkbox selects or clears its entire prompt/model list and reflects partial selection. Selecting all models resets every model to its default effort.
 
+Hover, focus, or click a prompt name in a gallery batch header or comparison title to read the exact prompt text. Comparisons spanning versions show each version separately. Escape or clicking outside dismisses the popup.
+
 ## Prompt and run semantics
 
 - A draft can be edited repeatedly without incrementing its version.
