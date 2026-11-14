@@ -92,10 +92,16 @@ export async function api(request, workspace) {
   }
   if (method === 'DELETE' && path === '/api/runs')
     return json(await workspace.deleteRuns(runIds((await bodyOf(request)).ids)));
-  const run = path.match(/^\/api\/runs\/([^/]+)(?:\/(html|cancel))?$/);
+  const run = path.match(/^\/api\/runs\/([^/]+)(?:\/(html|cancel|retry))?$/);
   if (run) {
     const metadata = store.run(run[1]);
     if (!metadata) throw bad('Run not found', 404);
+    if (method === 'POST' && run[2] === 'retry') {
+      if (!key) throw bad('Add an OpenRouter API key in Settings first.');
+      // Persist a wake before enqueueing so an interrupted response cannot strand the job.
+      await workspace.wake();
+      return json(store.retryRun(metadata.id), 201);
+    }
     if (method === 'POST' && run[2] === 'cancel') { await workspace.cancel(metadata); return json({ ok: true }); }
     if (method === 'GET') {
       const result = await workspace.result(metadata);

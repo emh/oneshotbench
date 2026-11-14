@@ -36,6 +36,26 @@ const filters = {
 let selected = new Set(),
   settingsDraft = null;
 const viewedVersions = new Map();
+const retrying = new Set();
+function retryButton(run) {
+  return button(retrying.has(run.id) ? 'Retrying…' : 'Retry', async () => {
+    if (retrying.has(run.id)) return;
+    retrying.add(run.id);
+    document.querySelectorAll('[data-retry-id]').forEach(node => {
+      if (node.dataset.retryId === run.id) { node.disabled = true; node.textContent = 'Retrying…'; }
+    });
+    try {
+      await mutate('/runs/' + run.id + '/retry', 'POST', {}, 'Retry queued');
+    } catch (error) {
+      toast(error.message);
+    } finally {
+      retrying.delete(run.id);
+      document.querySelectorAll('[data-retry-id]').forEach(node => {
+        if (node.dataset.retryId === run.id) { node.disabled = false; node.textContent = 'Retry'; }
+      });
+    }
+  }, '', { 'aria-label': 'Retry run ' + run.id, 'data-retry-id': run.id, disabled: retrying.has(run.id) });
+}
 async function refresh() {
   try {
     const next = await api('/state');
@@ -272,7 +292,9 @@ function renderRuns(container) {
           h(
             'td',
             {},
-            button('↗', () => detail(r.id), 'icon', { 'aria-label': 'Open run ' + r.id }),
+            h('div', { class: 'actions' },
+              r.status === 'failed' ? retryButton(r) : null,
+              button('↗', () => detail(r.id), 'icon', { 'aria-label': 'Open run ' + r.id })),
           ),
           h('td', { class: 'run-select' }, h('input', {
             type: 'checkbox', 'aria-label': 'Select run ' + r.id, checked: selected.has(r.id),
@@ -1001,6 +1023,7 @@ async function detail(id) {
       ),
     );
     footer.replaceChildren(button('Close', () => dialog.close()));
+    if (run.status === 'failed') footer.prepend(retryButton(run));
     if (['running', 'queued'].includes(run.status))
       footer.prepend(
         button(

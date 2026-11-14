@@ -32,6 +32,8 @@ The server reads `OPENROUTER_API_KEY` from `.env`. You can replace it and verify
 
 In the admin run list, the rightmost checkboxes select runs for deletion. The header checkbox selects all filtered rows; changing filters clears the selection. **Delete selected** opens a confirmation listing the runs. Deletion permanently removes run metadata and outputs, cancels active work, and removes those results from the gallery on its next load. Prompts and locked versions are preserved. Cloudflare persists failed artifact cleanup and retries it through the queue alarm; provider charges already incurred cannot be undone.
 
+Failed runs have a **Retry** button in the list and run details. It queues a new, billable attempt in the original batch, preserving the exact prompt version, model, reasoning effort, and saved generation settings. The failed attempt stays in history. Settings or prompt edits made since that attempt do not affect its retry; use **New run** to apply them.
+
 The gallery groups completed results by batch, newest first, with the submission date/time, prompt versions, and models above each batch's previews. Prompt/model/reasoning filters hide matching cards in place; selection and returning from comparison preserve the existing preview documents and their state. Runs also support reasoning-level filtering. **Default** matches runs with no explicit effort, including older runs; it does not infer a provider's effort. Batch summaries describe all completed results in that batch, even while filters hide some of them. Reload the page to fetch new results.
 
 In **New run**, each **All** checkbox selects or clears its entire prompt/model list and reflects partial selection. Selecting all models resets every model to its default effort.

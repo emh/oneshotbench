@@ -162,10 +162,16 @@ export function createApp({
           runner.pump();
           return json(res, 200, { deleted });
         }
-        const runMatch = path.match(/^\/api\/runs\/([^/]+)(?:\/(html|cancel))?$/);
+        const runMatch = path.match(/^\/api\/runs\/([^/]+)(?:\/(html|cancel|retry))?$/);
         if (runMatch) {
           const run = store.run(runMatch[1]);
           if (!run) throw bad('Run not found', 404);
+          if (req.method === 'POST' && runMatch[2] === 'retry') {
+            if (!getKey()) throw bad('Add an OpenRouter API key in Settings first.');
+            const result = store.retryRun(run.id);
+            runner.pump();
+            return json(res, 201, result);
+          }
           if (req.method === 'POST' && runMatch[2] === 'cancel') {
             if (!runner.cancel(run.id)) throw bad('This run has already finished.', 409);
             return json(res, 200, { ok: true });

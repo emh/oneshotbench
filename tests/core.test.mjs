@@ -363,6 +363,31 @@ test('admin API validates input, protects mutations, and never returns credentia
   assert.equal(gallery.runs.length, 0);
   assert.ok(!('selectedModels' in gallery.settings));
 });
+test('local retry API requires authorization and a key, then queues the failed snapshot in its original batch', async t => {
+  const { store, prompt } = fixture();
+  const original = store.enqueue([prompt.id], ['test/a']);
+  const id = original.ids[0];
+  store.updateRun(id, { status: 'failed', error: 'Provider failure' });
+  let key = null, pumps = 0;
+  const app = createApp({ store, runner: { pump() { pumps++; } }, getKey: () => key });
+  await new Promise(resolve => app.listen(0, '127.0.0.1', resolve));
+  t.after(() => { app.close(); store.close(); });
+  const url = `http://127.0.0.1:${app.address().port}/api/runs/${id}/retry`;
+  const post = headers => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: '{}' });
+  assert.equal((await post({})).status, 403);
+  const auth = { 'X-Oneshot-Client': 'admin' };
+  assert.equal((await post(auth)).status, 400);
+  assert.equal(store.runs().length, 1);
+  key = 'fixture-key';
+  assert.equal((await post({ ...auth, Origin: 'https://attacker.example' })).status, 403);
+  const response = await post(auth);
+  assert.equal(response.status, 201);
+  const result = await response.json();
+  assert.equal(result.batchId, original.batchId);
+  assert.equal(store.run(result.ids[0]).status, 'queued');
+  assert.equal(store.run(id).status, 'failed');
+  assert.equal(pumps, 1);
+});
 test('bulk delete API protects mutations, cancels active runs, and removes results without unlocking prompts', async t => {
   const { store, prompt } = fixture();
   const runner = new Runner(store, { getKey: () => null });

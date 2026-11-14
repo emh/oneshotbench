@@ -188,6 +188,18 @@ export class StoreCore {
       return { batchId, ids };
     });
   }
+  retryRun(id) {
+    return this.transaction(() => {
+      const run = this.run(id);
+      if (!run) throw Object.assign(new Error('Run not found'), { status: 404 });
+      if (run.status !== 'failed') throw Object.assign(new Error('Only failed runs can be retried.'), { status: 409 });
+      const retryId = crypto.randomUUID();
+      this.db.prepare('INSERT INTO runs (id,batch_id,version_id,model_id,model_name,created_at,status,config) VALUES (?,?,?,?,?,?,?,?)')
+        .run(retryId, run.batch_id, run.version_id, run.model_id, run.model_name,
+          new Date().toISOString(), 'queued', JSON.stringify(run.config));
+      return { batchId: run.batch_id, ids: [retryId] };
+    });
+  }
   runs({ details = false, completed = false } = {}) {
     const fields = details
       ? 'r.*'

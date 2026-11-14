@@ -31,6 +31,7 @@ for (let i = 0; i < batch.ids.length; i++)
     metrics: { durationMs: 12345 + i * 1000, inputTokens: 100, outputTokens: 1000, reasoningTokens: i === 0 ? 200 : null, cost: 0 },
     finished_at: new Date().toISOString(),
   });
+store.updateRun(batch.ids.at(-1), { status: 'failed', html: null, raw: 'Fixture provider failure', error: 'Fixture provider failure' });
 const versioned = store.prompts()[0];
 store.editPrompt(versioned.id, { title: versioned.title, category: 'Versioned fixture',
   content: 'Version 2: Add keyboard shortcuts and a compact layout.\nKeep all data local.',

@@ -197,6 +197,37 @@ test('hosted run API selects historical versions without locking the newest draf
   assert.equal(store.run((await next.json()).ids[0]).version_id, latest.version_id);
 });
 
+test('retry creates a fresh job in the original batch with the exact failed request snapshot', async t => {
+  const { store, workspace, storage } = fixture(t);
+  const prompt = store.createPrompt({ title: 'Retry', content: 'Original prompt' });
+  const original = store.enqueue([prompt.id], [{ modelId: 'test/model', reasoningEffort: 'high' }]);
+  const id = original.ids[0];
+  store.updateRun(id, { status: 'failed', raw: 'Provider error', error: 'Failed', metrics: { cost: 0.1 },
+    started_at: new Date().toISOString(), finished_at: new Date().toISOString() });
+  const failed = store.run(id);
+  store.editPrompt(prompt.id, { title: 'Updated', content: 'New prompt', baseVersionId: prompt.version_id });
+  store.saveSettings({ systemPrompt: 'Changed', temperature: 1.2, maxTokens: 1000, selectedModels: [] });
+  const response = await workspace.fetch(request('/api/runs/' + id + '/retry', {}));
+  assert.equal(response.status, 201);
+  const result = await response.json();
+  const retried = store.run(result.ids[0]);
+  assert.notEqual(retried.id, id);
+  assert.equal(result.batchId, original.batchId);
+  assert.equal(retried.batch_id, failed.batch_id);
+  assert.equal(retried.version_id, failed.version_id);
+  assert.equal(retried.prompt_content, 'Original prompt');
+  assert.equal(retried.model_id, failed.model_id);
+  assert.deepEqual(retried.config, failed.config);
+  assert.equal(retried.status, 'queued');
+  for (const key of ['started_at', 'finished_at', 'raw', 'html', 'error', 'metrics']) assert.equal(retried[key], null);
+  assert.deepEqual(store.run(id), failed);
+  assert.equal(store.prompt(prompt.id).locked_at, null);
+  assert.ok(storage.alarm);
+  assert.equal((await workspace.fetch(request('/api/runs/' + retried.id + '/retry', {}))).status, 409);
+  store.updateRun(retried.id, { status: 'completed' });
+  const gallery = await workspace.fetch(new Request('https://admin.example.com/api/gallery'));
+  assert.equal((await gallery.json()).runs[0].batch_id, original.batchId);
+});
 test('hosted API validates effort variants before locking or enqueuing prompts', async t => {
   const { store, workspace } = fixture(t);
   workspace.models = async () => [{ id: 'test/model', reasoningEfforts: ['medium', 'high'] }];
