@@ -621,6 +621,7 @@ async function loadModels(force = false) {
     render();
   }
 }
+const modelProvider = model => model.id.split('/')[0].replace(/^~/, '') || 'other';
 function renderModels(container) {
   if (!modelCatalog.length && !catalogBusy && !catalogError) queueMicrotask(() => loadModels());
   const f = filters.models,
@@ -652,7 +653,7 @@ function renderModels(container) {
         'Provider',
         [
           ['', 'All providers'],
-          ...[...new Set(all.map((m) => m.id.split('/')[0]))].sort().map((n) => [n, n]),
+          ...[...new Set(all.map((m) => modelProvider(m)))].sort().map((n) => [n, n]),
         ],
         f.provider,
         (v) => change('provider', v),
@@ -674,11 +675,12 @@ function renderModels(container) {
     .filter(
       (m) =>
         (!f.enabled || isEnabled(m.id)) &&
-        (!f.provider || m.id.split('/')[0] === f.provider) &&
+        (!f.provider || modelProvider(m) === f.provider) &&
         (m.id + ' ' + m.name).toLowerCase().includes(f.search.toLowerCase()),
     )
     .sort(
-      (a, b) => Number(isEnabled(b.id)) - Number(isEnabled(a.id)) || a.name.localeCompare(b.name),
+      (a, b) => modelProvider(a).localeCompare(modelProvider(b)) ||
+        Number(isEnabled(b.id)) - Number(isEnabled(a.id)) || a.name.localeCompare(b.name),
     );
   const table = h(
     'table',
@@ -695,7 +697,11 @@ function renderModels(container) {
     h(
       'tbody',
       {},
-      models.map((m) =>
+      models.flatMap((m, index) => [
+        index === 0 || modelProvider(models[index - 1]) !== modelProvider(m)
+          ? h('tr', { class: 'provider-heading' }, h('th', { colSpan: 5, scope: 'rowgroup' },
+              modelProvider(m), h('span', {}, models.filter(n => modelProvider(n) === modelProvider(m)).length + ' models')))
+          : null,
         h(
           'tr',
           {},
@@ -726,10 +732,10 @@ function renderModels(container) {
             }),
           ),
         ),
-      ),
+      ]),
     ),
   );
-  container.append(h('section', { class: 'panel table-scroll' }, table));
+  container.append(models.length ? h('section', { class: 'panel table-scroll' }, table) : empty('No models'));
 }
 function renderSettings(container) {
   if (!settingsDraft) settingsDraft = { ...state.settings, apiKey: '' };

@@ -8,7 +8,7 @@ import { createApp } from '../server/app.mjs';
 const directory = mkdtempSync(resolve(tmpdir(), 'oneshot-browser-'));
 const store = new Store(resolve(directory, 'data.sqlite'));
 const models = Array.from({ length: 9 }, (_, i) => ({
-  id: `test/model-${i + 1}`,
+  id: `${i < 5 ? 'fixture-a' : 'fixture-b'}/model-${i + 1}`,
   name: `Fixture model ${i + 1}`,
   context_length: 32000,
   pricing: { prompt: '0', completion: '0' },
@@ -16,7 +16,7 @@ const models = Array.from({ length: 9 }, (_, i) => ({
 }));
 store.saveSettings({ selectedModels: models });
 function output(model) {
-  return `<!DOCTYPE html><html><head><style>body{margin:0;background:#f8f5ee;font:20px system-ui;padding:70px;color:#343a2d}small{font-size:13px;color:#8c9978;letter-spacing:2px}h1{font-size:58px;letter-spacing:-3px;max-width:800px}button{padding:18px 30px;border:0;border-radius:10px;background:#566946;color:white;font:18px system-ui}.cards{display:flex;gap:25px;margin-top:40px}.card{padding:35px;background:white;border:1px solid #e3e9d5;border-radius:15px;width:250px}.card strong{font-size:42px;display:block;margin-top:12px}</style></head><body><small>ISOLATED QA FIXTURE · ${model}</small><h1>A little space for your next big idea.</h1><p>This is a deterministic test implementation, not a model-generated benchmark result.</p><button id="counter" onclick="this.textContent='Count: '+ ++window.count">Count: 0</button><div class="cards"><div class="card">Completed<strong>24</strong></div><div class="card">In progress<strong>08</strong></div></div><script>window.count=0;try{parent.document.body.dataset.escaped='yes'}catch{document.body.dataset.isolated='yes'}</script></body></html>`;
+  return `<!DOCTYPE html><html><head><style>body{margin:0;background:#f8f5ee;font:20px system-ui;padding:70px;color:#343a2d}small{font-size:13px;color:#8c9978;letter-spacing:2px}h1{font-size:58px;letter-spacing:-3px;max-width:800px}button{padding:18px 30px;border:0;border-radius:10px;background:#566946;color:white;font:18px system-ui}.cards{display:flex;gap:25px;margin-top:40px}.card{padding:35px;background:white;border:1px solid #e3e9d5;border-radius:15px;width:250px}.card strong{font-size:42px;display:block;margin-top:12px}</style></head><body><small>ISOLATED QA FIXTURE · ${model}</small><h1>A little space for your next big idea.</h1><p>This is a deterministic test implementation, not a model-generated benchmark result.</p><button id="counter" onclick="this.textContent='Count: '+ ++window.count">Count: 0</button><div class="cards"><div class="card">Completed<strong>24</strong></div><div class="card">In progress<strong>08</strong></div></div><script>document.body.dataset.instance=Date.now()+'-'+Math.random();window.count=0;try{parent.document.body.dataset.escaped='yes'}catch{document.body.dataset.isolated='yes'}</script></body></html>`;
 }
 const batch = store.enqueue(
   [store.prompts()[0].id],
@@ -34,6 +34,12 @@ const versioned = store.prompts()[0];
 store.editPrompt(versioned.id, { title: versioned.title, category: 'Versioned fixture',
   content: 'Version 2: Add keyboard shortcuts and a compact layout.\nKeep all data local.',
   baseVersionId: versioned.version_id });
+const secondBatch = store.enqueue([store.prompts()[0].id, store.prompts()[1].id], models.slice(0, 2).map(m => m.id));
+for (const id of secondBatch.ids) {
+  const run = store.run(id);
+  store.updateRun(id, { status: 'completed', html: output(run.model_name), raw: output(run.model_name),
+    metrics: { durationMs: 12000, cost: 0 }, finished_at: new Date().toISOString() });
+}
 const runner = new Runner(store, {
   getKey: () => 'fixture-only',
   fetchImpl: async (url, options) =>

@@ -24,11 +24,13 @@ npm run dev
 
 The server reads `OPENROUTER_API_KEY` from `.env`. You can replace it and verify the connection in **Settings**. The saved key is never returned to the browser. Both servers bind to loopback only. Development serves the same app and API on ports 5173 and 4310. There is no install or build step. Refresh the browser to load frontend edits. Backend changes require a restart.
 
-1. Open **Models**, search the live OpenRouter catalog, and enable your contenders.
+1. Open **Models**, browse the live OpenRouter catalog grouped by provider, and enable your contenders. Search, provider filters, and enabled-only filtering apply within the groups.
 2. Create or edit prompts in **Prompts**. Four editable starter prompts are included; there are no fabricated results.
 3. Choose **New run**, select any combination of prompts and enabled models, and choose a version for each prompt (latest by default). Submit the batch to make billable requests using your OpenRouter account. In the prompt list, the version dropdown switches the displayed title, category, content, status, and run count. **Run vN** starts a run with that version selected; **Edit latest** keeps historical versions immutable.
 4. Watch results in **Runs**. Search and filter by model, prompt, or status, and sort by date. Run details include the original response, prompt, settings, provider, tokens, duration, and reported cost.
 5. Select 2–9 completed results from the same prompt to compare. Different prompt versions can be compared and are labeled. Each tile has a model/result selector; layouts support 1–9 columns, including 2×2, 3×3, and a single row.
+
+The gallery groups completed results by batch, with the submission date/time, prompt versions, and models above each batch's previews. Search and filters hide matching cards in place; selection, sorting, refresh of unchanged outputs, and returning from comparison preserve the existing preview documents and their state. Batch summaries describe all completed results in that batch, even while filters hide some of them.
 
 ## Prompt and run semantics
 
@@ -91,6 +93,6 @@ npm test
 
 Tests use isolated databases and mocked model responses; they do not spend OpenRouter credits. They cover prompt immutability, transaction rollback, historical preservation, interrupted-run recovery, generation capture, truncation, concurrency, cancellation, credential redaction, API validation, preview policy, and export boundaries.
 
-`node tests/fixture-server.mjs` serves a disposable browser-test workspace on http://127.0.0.1:4311 with nine clearly labeled mock implementations. It never calls OpenRouter and never modifies the real workspace. Stop it with Ctrl+C.
+`node tests/fixture-server.mjs` serves a disposable browser-test workspace on http://127.0.0.1:4311 with thirteen clearly labeled mock implementations across two batches and two providers. Each preview body exposes a unique `data-instance` marker for checking document lifetime while filtering and selecting. It never calls OpenRouter and never modifies the real workspace. Stop it with Ctrl+C.
 
 OpenRouter integration follows the [chat completions API](https://openrouter.ai/docs/api/api-reference/chat/create-a-chat-completion) and [live model catalog](https://openrouter.ai/docs/guides/overview/models).

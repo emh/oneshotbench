@@ -140,11 +140,12 @@ export function preview(html, title, { thumbnail = false, width = 1200, height =
         observer.disconnect();
         return;
       }
-      const scale = wrapper.clientWidth / width;
+      const scale = wrapper.clientWidth / (parseFloat(frame.style.width) || width);
       frame.style.transform = 'scale(' + scale + ')';
-      wrapper.style.height = height * scale + 'px';
+      wrapper.style.height = (parseFloat(frame.style.height) || height) * scale + 'px';
     });
     observer.observe(wrapper);
+    observer.observe(frame);
   }
   return wrapper;
 }
