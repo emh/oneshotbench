@@ -31,6 +31,32 @@ const promptPopup = h('div', { id: 'prompt-popup', class: 'prompt-popup', role: 
   onPointerleave: () => schedulePromptClose(),
 });
 document.body.append(promptPopup);
+let plotTrigger, plotCloseTimer;
+const plotPopup = h('div', { id: 'plot-popup', class: 'plot-popup', role: 'tooltip', hidden: true,
+  onPointerenter: () => clearTimeout(plotCloseTimer),
+  onPointerleave: () => schedulePlotClose(),
+});
+document.body.append(plotPopup);
+function closePlot() {
+  clearTimeout(plotCloseTimer);
+  plotTrigger?.removeAttribute('aria-describedby');
+  plotTrigger?.querySelector('.plot-point')?.classList.remove('inspected');
+  plotTrigger = null;
+  plotPopup.hidden = true;
+}
+function schedulePlotClose() {
+  clearTimeout(plotCloseTimer);
+  plotCloseTimer = setTimeout(closePlot, 180);
+}
+function positionPlot() {
+  if (!plotTrigger || plotPopup.hidden) return;
+  const anchor = plotTrigger.getBoundingClientRect(), box = plotPopup.getBoundingClientRect();
+  if (anchor.bottom < 0 || anchor.top > window.innerHeight) { closePlot(); return; }
+  const left = Math.max(12, Math.min(anchor.right + 12, window.innerWidth - box.width - 12));
+  const top = anchor.bottom + 8 + box.height <= window.innerHeight - 12
+    ? anchor.bottom + 8 : Math.max(12, anchor.top - box.height - 8);
+  Object.assign(plotPopup.style, { left: left + 'px', top: top + 'px' });
+}
 function closePrompt() {
   clearTimeout(promptCloseTimer);
   promptTrigger?.removeAttribute('aria-describedby');
@@ -67,13 +93,15 @@ function promptLabel(label, runs) {
   }
   return trigger;
 }
-document.addEventListener('keydown', event => { if (event.key === 'Escape') closePrompt(); });
+document.addEventListener('keydown', event => { if (event.key === 'Escape') { closePrompt(); closePlot(); } });
 document.addEventListener('pointerdown', event => {
   if (!promptPopup.contains(event.target) && !promptTrigger?.contains(event.target)) closePrompt();
+  if (!plotPopup.contains(event.target) && !plotTrigger?.contains(event.target)) closePlot();
 });
-window.addEventListener('resize', closePrompt);
+window.addEventListener('resize', () => { closePrompt(); closePlot(); });
 document.addEventListener('scroll', event => {
   if (!promptPopup.contains(event.target)) closePrompt();
+  if (!plotPopup.contains(event.target)) positionPlot();
 }, true);
 function routeState() { return { compare, columns, prompt, model, effort, version, batch, status, view, metric }; }
 function readURL() {
@@ -296,7 +324,8 @@ function syncFilterControls() {
   }
 }
 function renderPromptIndex() {
-  const prompts = promptIndex();
+  const completedPrompts = new Set(data.runs.map(run => run.prompt_id));
+  const prompts = promptIndex().filter(p => completedPrompts.has(p.id));
   pageHost.replaceChildren(navigation(), h('main', { class: 'gallery-content' },
     h('div', { class: 'section-heading' }, h('h1', {}, 'Prompts'), badge(prompts.length + ' prompts')),
     prompts.length ? h('div', { class: 'public-prompts' }, prompts.map(p => {
@@ -312,7 +341,7 @@ function renderPromptIndex() {
           h('div', { class: 'actions' }, p.archived ? badge('archived') : null, badge(runs.length + ' results'))),
         latest ? versionContent(latest) : null,
         versions.length > 1 ? h('details', {}, h('summary', {}, 'Previous versions (' + (versions.length - 1) + ')'), versions.slice(1).map(versionContent)) : null);
-    })) : empty('No prompts')));
+    })) : empty('No prompts with results')));
 }
 function svgElement(tag, attrs = {}, ...children) {
   const node = document.createElementNS('http://www.w3.org/2000/svg', tag);
@@ -353,29 +382,31 @@ function renderScatter() {
   }
   svg.append(svgElement('text', { x: width / 2, y: height - 12, 'text-anchor': 'middle', class: 'plot-axis' }, metricNames[metric]),
     svgElement('text', { x: 18, y: height / 2, 'text-anchor': 'middle', transform: `rotate(-90 18 ${height / 2})`, class: 'plot-axis' }, 'Cost (USD)'));
-  const detail = h('div', { class: 'plot-detail', 'aria-live': 'polite' });
-  const pointSelect = select('Inspect run', points.map(({ run }) => [run.id,
-    runModelName(run) + ' · ' + run.prompt_title + ' · v' + run.version + ' · ' + run.id.slice(0, 8)]), points[0].run.id,
-    id => showPoint(points.find(p => p.run.id === id)));
-  function showPoint(point) {
+  function showPoint(point, trigger) {
+    closePlot();
     const { run, tokens: used, cost } = point;
-    pointSelect.value = run.id;
-    svg.querySelectorAll('.plot-point').forEach(node => node.classList.toggle('inspected', node.dataset.runId === run.id));
-    detail.replaceChildren(
+    plotTrigger = trigger;
+    trigger.setAttribute('aria-describedby', plotPopup.id);
+    trigger.querySelector('.plot-point').classList.add('inspected');
+    plotPopup.replaceChildren(
       h('div', { class: 'section-heading' }, h('strong', {}, runModelName(run)), badge(run.status, run.status)),
-      h('div', {}, promptLabel(run.prompt_title + ' · v' + run.version, [withPrompt(run)])),
+      h('div', {}, run.prompt_title + ' · v' + run.version),
       h('div', { class: 'actions' }, h('code', {}, '$' + cost), h('code', {}, used.toLocaleString() + ' ' + metricNames[metric].toLowerCase())),
       tokens(run.metrics),
-      h('div', { class: 'actions' }, h('code', {}, new Date(run.created_at).toLocaleString()), pageLink('Open run ↗', runURL(run.id))));
+      h('div', { class: 'actions' }, h('code', {}, new Date(run.created_at).toLocaleString()), h('code', {}, run.id.slice(0, 8))));
+    plotPopup.hidden = false;
+    positionPlot();
   }
   for (const point of points) {
     const r = point.run, label = runModelName(r) + ' · ' + r.prompt_title + ' · v' + r.version + ' · ' +
       point.tokens.toLocaleString() + ' tokens · ' + tickCost(point.cost) + ' · ' + r.status + ' · ' + r.id;
     const link = svgElement('a', { href: runURL(r.id), 'aria-label': label },
       svgElement('circle', { cx: x(point.tokens), cy: y(point.cost), r: 6, fill: color(r.model_id),
-        class: 'plot-point', 'data-run-id': r.id }, svgElement('title', {}, label)));
-    link.addEventListener('pointerenter', () => showPoint(point));
-    link.addEventListener('focus', () => showPoint(point));
+        class: 'plot-point', 'data-run-id': r.id }));
+    link.addEventListener('pointerenter', () => showPoint(point, link));
+    link.addEventListener('pointerleave', schedulePlotClose);
+    link.addEventListener('focus', () => showPoint(point, link));
+    link.addEventListener('blur', schedulePlotClose);
     link.addEventListener('click', event => {
       if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       event.preventDefault(); navigate(runURL(r.id));
@@ -384,12 +415,11 @@ function renderScatter() {
   }
   const legend = h('div', { class: 'plot-legend' }, [...new Map(points.map(p => [p.run.model_id, name(p.run.model_name)]))].map(([id, label]) =>
     h('span', {}, h('i', { style: { background: color(id) } }), label)));
-  content.append(h('div', { class: 'panel plot-panel' }, svg, legend),
-    h('section', { class: 'panel plot-inspector' }, pointSelect, detail));
-  showPoint(points[0]);
+  content.append(h('div', { class: 'panel plot-panel' }, svg, legend));
 }
 function render() {
   closePrompt();
+  closePlot();
   if (!data) return;
   if (!galleryView?.isConnected) mountGallery();
   galleryView.querySelector('.gallery-header').replaceWith(navigation());
