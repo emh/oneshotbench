@@ -868,10 +868,13 @@ summary {
   border-bottom: 1px solid var(--line);
   width: 100%;
   padding: 0;
-  background: #fff;
+  background: var(--surface);
   cursor: pointer;
   position: relative;
 }
+.gallery-preview.loading::before { content: 'Loading…'; color: var(--muted); font: 11px var(--mono); }
+.preview-message { color: var(--muted); font: 11px var(--mono); }
+.preview-loading { display: grid; place-content: center; gap: 12px; color: var(--muted); min-height: 200px; }
 .gallery-preview:after {
   content: '↗';
   position: absolute;

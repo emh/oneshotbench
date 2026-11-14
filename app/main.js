@@ -15,7 +15,7 @@ import {
   errorBox,
   preview,
 } from '../shared/dom.js';
-import { readGalleryURL, galleryURL, matchesRun, plotData, plotAxes } from '../shared/gallery.js';
+import { readGalleryURL, galleryURL, matchesRun, plotData, plotAxes, hasGalleryFilters, clearGalleryFilters } from '../shared/gallery.js';
 const root = document.getElementById('root');
 let data,
   selected = new Set(),
@@ -25,6 +25,8 @@ let data,
   model = '',
   effort = '', version = '', batch = '', status = '', view = 'gallery', metric = 'total', axes = 'cost-tokens', hiddenModels = [];
 let gallerySynced = false;
+let previewEndpoint = '';
+const htmlRequests = new Map();
 let promptTrigger, promptCloseTimer;
 const promptPopup = h('div', { id: 'prompt-popup', class: 'prompt-popup', role: 'tooltip', hidden: true,
   onPointerenter: () => clearTimeout(promptCloseTimer),
@@ -123,6 +125,20 @@ function pageLink(label, href, className = '') {
 function changeFilter(key, value) {
   navigate(urlFor({ [key]: value, ...(key === 'prompt' ? { version: '' } : {}) }));
 }
+function clearFilters() { navigate(galleryURL(location.href, clearGalleryFilters(routeState())).href); }
+async function ensureHTML(run) {
+  if (typeof run.html === 'string') return run.html;
+  if (!data.lazyPreviews) throw Error('Preview unavailable');
+  if (!htmlRequests.has(run.id)) htmlRequests.set(run.id, (async () => {
+    const response = await fetch(previewEndpoint + '?run=' + encodeURIComponent(run.id));
+    if (!response.ok) throw Error('Preview unavailable');
+    const result = await response.json();
+    if (result.id !== run.id || typeof result.html !== 'string') throw Error('Preview unavailable');
+    run.html = result.html;
+    return run.html;
+  })().finally(() => htmlRequests.delete(run.id)));
+  return htmlRequests.get(run.id);
+}
 function open(ids) { navigate(urlFor({ compare: ids })); }
 function navigation() {
   return h('header', { class: 'gallery-header' },
@@ -139,9 +155,11 @@ async function load() {
   try {
     const exported = document.querySelector('meta[name="oneshot-export"]');
     const endpoint = document.querySelector('meta[name="oneshot-api"]')?.content || '';
-    const response = await fetch(exported ? new URL('data.json', location.href) : endpoint + '/api/gallery');
+    previewEndpoint = endpoint + '/api/gallery';
+    const response = await fetch(exported ? new URL('data.json', location.href) : previewEndpoint + '?metadata=1');
     if (!response.ok) throw Error('Gallery unavailable');
     data = await response.json();
+    data.runs = data.runs.map(withPrompt);
     gallerySynced = false;
     render();
   } catch (e) {
@@ -151,6 +169,46 @@ async function load() {
 // Keep cards mounted: removing or reparenting an iframe resets its document.
 let galleryView, comparisonHost, galleryControls, pageHost;
 const cards = new Map(), batches = new Map();
+const previewQueue = new Set();
+let activePreviews = 0;
+const previewObserver = new IntersectionObserver(entries => {
+  for (const item of entries) {
+    const entry = cards.get(item.target.dataset.runId);
+    if (!entry) continue;
+    entry.near = item.isIntersecting;
+    if (entry.near && entry.previewState === 'idle') previewQueue.add(entry);
+  }
+  pumpPreviews();
+}, { rootMargin: '250px 0px' });
+function previewEligible(entry) {
+  if (!entry.near || !entry.card.isConnected || entry.card.hidden || galleryView.hidden) return false;
+  const rect = entry.card.getBoundingClientRect();
+  return rect.bottom >= -250 && rect.top <= window.innerHeight + 250;
+}
+function pumpPreviews() {
+  for (const entry of previewQueue) {
+    if (activePreviews >= 3) break;
+    previewQueue.delete(entry);
+    if (entry.previewState !== 'idle' || !previewEligible(entry)) continue;
+    activePreviews++;
+    entry.previewState = 'loading';
+    entry.previewButton.classList.add('loading');
+    ensureHTML(entry.run).then(html => {
+      if (!previewEligible(entry)) { entry.previewState = 'idle'; return; }
+      entry.previewButton.replaceChildren(preview(html, entry.run.prompt_title + ' · ' + runModelName(entry.run) + ' · ' + entry.run.id,
+        { thumbnail: true, width: data.settings.minWidth, height: data.settings.minHeight }));
+      entry.previewState = 'loaded';
+      previewObserver.unobserve(entry.card);
+    }).catch(() => {
+      entry.previewState = 'error';
+      entry.previewButton.replaceChildren(h('span', { class: 'preview-message' }, 'Preview unavailable · Open to retry'));
+    }).finally(() => {
+      activePreviews--;
+      entry.previewButton.classList.remove('loading');
+      pumpPreviews();
+    });
+  }
+}
 function mountGallery() {
   const resultCount = badge(''), batchList = h('div', { class: 'gallery-batches' });
   const noResults = empty('No results');
@@ -163,15 +221,16 @@ function mountGallery() {
   const effortFilter = select('Filter gallery by reasoning level', reasoningFilterOptions, effort, v => changeFilter('effort', v));
   const versionFilter = select('Filter gallery by prompt version', [], version, v => changeFilter('version', v));
   const batchFilter = select('Filter gallery by batch', [], batch, v => changeFilter('batch', v));
+  const clearButton = button('Clear all', clearFilters);
   const notice = h('div', { role: 'status' });
   galleryView = h('div', { class: 'gallery-app' },
     navigation(),
     h('main', { class: 'gallery-content' },
-      h('div', { class: 'toolbar standalone gallery-filters' }, promptFilter, modelFilter, effortFilter, versionFilter, batchFilter, resultCount),
+      h('div', { class: 'toolbar standalone gallery-filters' }, promptFilter, modelFilter, effortFilter, versionFilter, batchFilter, clearButton, resultCount),
       notice, batchList, noResults, selectionBar));
   comparisonHost = h('div', { hidden: true });
   galleryControls = { resultCount, batchList, noResults, selectionCount, selectionBar,
-    compareButton, promptFilter, modelFilter, effortFilter, versionFilter, batchFilter, notice };
+    compareButton, promptFilter, modelFilter, effortFilter, versionFilter, batchFilter, clearButton, notice };
   pageHost = h('div', { hidden: true });
   root.replaceChildren(galleryView, comparisonHost, pageHost);
 }
@@ -179,7 +238,9 @@ function syncGallery() {
   if (!galleryView?.isConnected) mountGallery();
   const ids = new Set(data.runs.map(r => r.id));
   for (const id of selected) if (!ids.has(id)) selected.delete(id);
-  for (const [id, entry] of cards) if (!ids.has(id)) { entry.card.remove(); cards.delete(id); }
+  for (const [id, entry] of cards) if (!ids.has(id)) {
+    previewObserver.unobserve(entry.card); previewQueue.delete(entry); entry.card.remove(); cards.delete(id);
+  }
   const groups = new Map();
   for (const run of data.runs) {
     const id = run.batch_id || run.id;
@@ -198,17 +259,13 @@ function syncGallery() {
     }
     batch.runs = runs;
     batch.createdAt = runs.reduce((first, r) => r.created_at < first ? r.created_at : first, runs[0].created_at);
-    const prompts = promptVersions(runs);
-    const models = [...new Map(runs.map(r => [r.model_id + ':' + (r.config?.reasoningEffort || 'default'), runModelName(r)])).values()];
+    batch.summaryKey = null;
     batch.heading.replaceChildren(
       h('div', { class: 'section-heading' },
         h('h2', {}, h('time', { dateTime: batch.createdAt }, new Date(batch.createdAt).toLocaleString(undefined,
           { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }))),
         h('code', {}, id.slice(0, 8))),
-      h('dl', { class: 'batch-summary' },
-        h('dt', {}, 'Prompts'), h('dd', {}, prompts.map((r, index) =>
-          [index ? ' / ' : '', promptLabel(r.prompt_title + ' · v' + r.version, [r])])),
-        h('dt', {}, 'Models'), h('dd', {}, models.join(' / '))));
+      h('dl', { class: 'batch-summary' }));
     batch.count = badge('');
     batch.heading.querySelector('.section-heading').append(batch.count);
     for (const r of runs) {
@@ -226,9 +283,10 @@ function syncGallery() {
               h('label', { class: 'inline-check' }, checkbox, 'Compare')),
             h('div', { class: 'gallery-token-usage' }, usage),
             h('footer', {}, timing, cost, pageLink('Permalink ↗', runURL(r.id), 'run-permalink'))));
-        entry = { card, checkbox, previewButton, title, version, modelName, timing, cost, usage };
+        entry = { card, checkbox, previewButton, title, version, modelName, timing, cost, usage, previewState: 'idle', near: false };
         cards.set(r.id, entry);
         batch.grid.append(card);
+        previewObserver.observe(card);
       }
       entry.run = r;
       entry.title.textContent = r.prompt_title;
@@ -237,15 +295,13 @@ function syncGallery() {
       entry.timing.textContent = duration(r);
       entry.cost.textContent = money(r.metrics?.cost);
       entry.usage.textContent = tokenUsage(r.metrics);
-      if (entry.html !== r.html) {
-        entry.previewButton.replaceChildren(preview(r.html, r.prompt_title + ' · ' + runModelName(r) + ' · ' + r.id,
-          { thumbnail: true, width: data.settings.minWidth, height: data.settings.minHeight }));
-        entry.html = r.html;
-      }
+      entry.previewButton.style.aspectRatio = data.settings.minWidth + ' / ' + data.settings.minHeight;
       // Changing viewport settings resizes the existing document without reloading it.
       const frame = entry.previewButton.querySelector('iframe');
-      frame.style.width = data.settings.minWidth + 'px';
-      frame.style.height = data.settings.minHeight + 'px';
+      if (frame) {
+        frame.style.width = data.settings.minWidth + 'px';
+        frame.style.height = data.settings.minHeight + 'px';
+      }
     }
   }
   gallerySynced = true;
@@ -254,6 +310,7 @@ function syncGallery() {
 }
 function updateGallery() {
   syncFilterControls();
+  galleryControls.clearButton.hidden = !hasGalleryFilters(routeState());
   const first = data.runs.find(r => selected.has(r.id));
   let visible = 0;
   for (const entry of cards.values()) {
@@ -264,9 +321,20 @@ function updateGallery() {
     entry.card.classList.toggle('selected', selected.has(r.id));
     entry.checkbox.checked = selected.has(r.id);
     entry.checkbox.disabled = !selected.has(r.id) && (selected.size >= 9 || !!first && first.prompt_id !== r.prompt_id);
+    if (matches && entry.near && entry.previewState === 'idle') previewQueue.add(entry);
   }
   [...batches.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).forEach((batch, index) => {
-    const count = batch.runs.filter(r => !cards.get(r.id).card.hidden).length;
+    const visibleRuns = batch.runs.filter(r => !cards.get(r.id).card.hidden), count = visibleRuns.length;
+    const summaryKey = visibleRuns.map(r => r.id).join(',');
+    if (batch.summaryKey !== summaryKey) {
+      batch.summaryKey = summaryKey;
+      const prompts = promptVersions(visibleRuns);
+      const models = [...new Map(visibleRuns.map(r => [r.model_id + ':' + (r.config?.reasoningEffort || 'default'), runModelName(r)])).values()];
+      batch.heading.querySelector('.batch-summary').replaceChildren(
+        h('dt', {}, 'Prompts'), h('dd', {}, prompts.map((r, index) =>
+          [index ? ' / ' : '', promptLabel(r.prompt_title + ' · v' + r.version, [r])])),
+        h('dt', {}, 'Models'), h('dd', {}, models.join(' / ')));
+    }
     batch.section.hidden = !count;
     // CSS order preserves iframe browsing contexts, unlike moving DOM nodes.
     batch.section.style.order = index;
@@ -277,6 +345,7 @@ function updateGallery() {
   galleryControls.selectionBar.hidden = !selected.size;
   galleryControls.selectionCount.textContent = selected.size + '/9 selected';
   galleryControls.compareButton.disabled = selected.size < 2;
+  pumpPreviews();
 }
 function analytics() { return data.analytics || data.runs; }
 function promptIndex() {
@@ -369,7 +438,8 @@ function renderScatter() {
     filterSelect('Filter chart by prompt', 'prompt'), filterSelect('Filter chart by model', 'model'),
     filterSelect('Filter chart by reasoning level', 'effort'), filterSelect('Filter chart by prompt version', 'version'),
     filterSelect('Filter chart by batch', 'batch'), filterSelect('Filter chart by status', 'status'),
-    pair.x === 'tokens' ? select('Token metric', Object.entries(metricNames), metric, next => navigate(urlFor({ metric: next }))) : null, badge(countLabel));
+    pair.x === 'tokens' ? select('Token metric', Object.entries(metricNames), metric, next => navigate(urlFor({ metric: next }))) : null,
+    hasGalleryFilters(routeState()) ? button('Clear all', clearFilters) : null, badge(countLabel));
   const content = h('main', { class: 'gallery-content scatter-content' },
     h('h1', {}, 'Scatterplot'), controls);
   pageHost.replaceChildren(navigation(), content);
@@ -461,6 +531,23 @@ function render() {
       else updateGallery();
     }
   }
+}
+function resultPreview(run) {
+  if (run.status !== 'completed') return empty(run.status + ' · No completed implementation');
+  if (typeof run.html === 'string') return preview(run.html, run.prompt_title + ' · ' + runModelName(run));
+  const holder = h('div', { class: 'preview-loading' }, 'Loading…');
+  ensureHTML(run).then(html => {
+    if (holder.isConnected) holder.replaceWith(preview(html, run.prompt_title + ' · ' + runModelName(run)));
+  }).catch(() => {
+    if (holder.isConnected) holder.replaceChildren(errorBox('Preview unavailable'), button('Retry', () => holder.replaceWith(resultPreview(run))));
+  });
+  return holder;
+}
+async function showSource(run) {
+  try {
+    const html = await ensureHTML(run);
+    modal(runModelName(run), h('div', {}, h('h3', {}, 'Prompt · v' + run.version), h('pre', {}, run.prompt_content), h('h3', {}, 'HTML'), h('pre', {}, html)));
+  } catch { modal('Preview unavailable', errorBox('Could not load this implementation.')); }
 }
 function comparison() {
   closePrompt();
@@ -554,20 +641,9 @@ function comparison() {
           h('code', {}, duration(r)),
           tokens(r.metrics),
           h('code', {}, money(r.metrics?.cost)),
-          r.html ? button(
+          r.status === 'completed' ? button(
             '</>',
-            () =>
-              modal(
-                runModelName(r),
-                h(
-                  'div',
-                  {},
-                  h('h3', {}, 'Prompt · v' + r.version),
-                  h('pre', {}, r.prompt_content),
-                  h('h3', {}, 'HTML'),
-                  h('pre', {}, r.html),
-                ),
-              ),
+            () => showSource(r),
             'icon',
             { 'aria-label': 'View source ' + r.id },
           ) : badge(r.status, r.status),
@@ -577,8 +653,7 @@ function comparison() {
               })
             : null,
         ),
-        r.html ? preview(r.html, r.prompt_title + ' · ' + runModelName(r)) :
-          empty(r.status + ' · No completed implementation'),
+        resultPreview(r),
       ),
     );
   comparisonHost.replaceChildren(
