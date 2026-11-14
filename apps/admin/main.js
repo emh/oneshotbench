@@ -320,7 +320,7 @@ function deleteSelectedRuns() {
       dialog.close();
       await refresh();
       render();
-      toast(result.deleted.length + ' runs deleted' + (result.cleanupPending ? ' · output cleanup pending' : ''));
+      toast(result.deleted.length + (result.deleted.length === 1 ? ' run deleted' : ' runs deleted') + (result.cleanupPending ? ' · output cleanup pending' : ''));
     } catch (e) {
       error.replaceChildren(errorBox(e.message));
     } finally {
@@ -329,8 +329,8 @@ function deleteSelectedRuns() {
     }
   }, 'danger');
   dialog = modal('Delete selected runs?', h('div', {},
-    h('p', {}, 'Permanently delete ' + runs.length + ' runs and their saved outputs. This cannot be undone.'),
-    active ? h('p', {}, active + ' queued or running runs will be cancelled. Requests already sent may still incur charges.') : null,
+    h('p', {}, 'Permanently delete ' + runs.length + (runs.length === 1 ? ' run' : ' runs') + ' and saved outputs. This cannot be undone.'),
+    active ? h('p', {}, active + (active === 1 ? ' queued or running run will' : ' queued or running runs will') + ' be cancelled. Requests already sent may still incur charges.') : null,
     h('ul', { class: 'delete-run-list' }, runs.map(run => h('li', {},
       h('strong', {}, run.prompt_title + ' · v' + run.version),
       h('div', {}, runModelName(run) + ' · ' + run.status + ' · ' + run.id.slice(0, 8))))),
