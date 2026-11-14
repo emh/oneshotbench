@@ -48,7 +48,11 @@ export function tokenUsage(metrics = {}) {
 }
 export const tokens = metrics => h('span', { class: 'token-usage mono',
   title: 'Token usage: input / output / reasoning (included in output)' }, tokenUsage(metrics));
-export const duration = (r) => {
+export const duration = (r, now = Date.now()) => {
+  if (r.status === 'running') {
+    const started = Date.parse(r.started_at);
+    return Number.isFinite(started) ? (Math.max(0, now - started) / 1000).toFixed(1) + ' s' : '—';
+  }
   const n =
     r.metrics?.durationMs ??
     (r.finished_at && r.started_at ? Date.parse(r.finished_at) - Date.parse(r.started_at) : null);

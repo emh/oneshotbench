@@ -228,7 +228,7 @@ function renderRuns(container) {
       rows.map((r) =>
         h(
           'tr',
-          {},
+          { class: first && (r.status !== 'completed' || r.prompt_id !== first.prompt_id) ? 'not-comparable' : '' },
           h(
             'td',
             {},
@@ -269,7 +269,7 @@ function renderRuns(container) {
             badge(r.status, r.status),
             failure(r) ? button(failure(r), () => detail(r.id), 'failure') : null,
           ),
-          h('td', { class: 'mono' }, duration(r)),
+          h('td', { class: 'mono', 'data-live-start': r.status === 'running' ? r.started_at : null }, duration(r)),
           h('td', {}, tokens(r.metrics)),
           h('td', { class: 'mono' }, money(r.metrics?.cost)),
           h('td', { class: 'mono' }, date(r.created_at)),
@@ -1014,3 +1014,9 @@ async function detail(id) {
 }
 await refresh();
 setInterval(refresh, 2500);
+setInterval(() => {
+  const now = Date.now();
+  root.querySelectorAll('[data-live-start]').forEach(cell => {
+    cell.textContent = duration({ status: 'running', started_at: cell.dataset.liveStart }, now);
+  });
+}, 100);

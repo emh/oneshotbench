@@ -107,6 +107,9 @@ code,
   font: 11px var(--mono);
   color: var(--muted);
 }
+tr.not-comparable {
+  opacity: 0.35;
+}
 small {
   display: block;
   font: 10px/1.6 var(--mono);
