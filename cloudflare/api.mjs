@@ -129,7 +129,7 @@ export async function api(request, workspace) {
       const { raw, ...run } = await workspace.result(metadata);
       runs.push(run);
     }
-    return json({ mode: 'cloud', adminUrl: workspace.env.ADMIN_ORIGIN + '/', settings: { minWidth, minHeight, columns }, runs });
+    return json({ mode: 'cloud', adminUrl: workspace.env.ADMIN_ORIGIN + '/', settings: { minWidth, minHeight, columns }, ...store.galleryIndex(), runs });
   }
   throw bad('API endpoint not found', 404);
 }

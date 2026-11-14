@@ -23,6 +23,7 @@ writeFileSync(
   resolve(out, 'data.json'),
   JSON.stringify({
     mode: 'static',
+    ...store.galleryIndex(),
     exportedAt: new Date().toISOString(),
     settings: { minWidth, minHeight, columns },
     runs,

@@ -15,7 +15,7 @@ The application source runs as native modules. There is no package install, bund
 
 Cloudflare Access protects the entire admin hostname. The Worker also checks the JWT signature, issuer, audience, and expiry. Configure an Allow policy for the owner's email; no public bypass policy is needed because the gallery API has its own hostname. Preview deployment URLs are disabled.
 
-The public gallery includes every completed run, its prompt, captured generation configuration, HTML, model identity, and usage metadata. Failed and active runs, raw responses, credentials, and private settings are excluded. The R2 bucket itself is not public. CORS permits the configured GitHub Pages origin; the gallery data is intentionally public independently of CORS.
+The public gallery includes every completed run, its prompt, captured generation configuration, HTML, model identity, and usage metadata. The prompt directory exposes all prompts and versions, including unused drafts and archived prompts. Chart metadata includes model, prompt/version, reasoning effort, batch, status, date, and metrics for all runs, including failed and active attempts; it excludes their outputs, errors, and generation settings. Raw responses, credentials, and private settings are excluded. The R2 bucket itself is not public. CORS permits the configured GitHub Pages origin; the gallery data is intentionally public independently of CORS.
 
 The initial OpenRouter key is a Worker secret. Replacing it through Settings stores an AES-GCM encrypted override in the workspace, using the separate `KEY_ENCRYPTION_SECRET` Worker secret. Neither key is returned by the API. Preserve the encryption secret across deployments.
 

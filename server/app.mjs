@@ -198,6 +198,7 @@ export function createApp({
           const { minWidth, minHeight, columns } = store.settings();
           return json(res, 200, {
             mode: 'local',
+            ...store.galleryIndex(),
             settings: { minWidth, minHeight, columns },
             runs: store.runs({ details: true, completed: true }).map(({ raw, ...run }) => run),
           });
@@ -216,6 +217,7 @@ export function createApp({
         '/index.html': `${app}/index.html`,
         '/app/main.js': `${app}/main.js`,
         '/shared/dom.js': 'shared/dom.js',
+        '/shared/gallery.js': 'shared/gallery.js',
         '/shared/styles.css': 'shared/styles.css',
       };
       if (!Object.hasOwn(assets, requested)) throw bad('File not found', 404);

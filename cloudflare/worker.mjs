@@ -7,6 +7,7 @@ import galleryHTML from '../apps/gallery/index.html';
 import adminJS from '../apps/admin/main.js.txt';
 import galleryJS from '../apps/gallery/main.js.txt';
 import domJS from '../apps/shared/dom.js.txt';
+import galleryHelpers from '../apps/shared/gallery.js.txt';
 import styles from '../apps/shared/styles.css';
 
 const asset = (body, type) => ({ body, type });
@@ -20,6 +21,7 @@ const assets = {
   '/gallery/index.html': asset(galleryHTML, 'text/html; charset=utf-8'),
   '/gallery/app/main.js': asset(galleryJS, 'text/javascript'),
   '/gallery/shared/dom.js': asset(domJS, 'text/javascript'),
+  '/gallery/shared/gallery.js': asset(galleryHelpers, 'text/javascript'),
   '/gallery/shared/styles.css': asset(styles, 'text/css'),
 };
 export default { fetch: (request, env) => route(request, env, assets) };

@@ -28,7 +28,7 @@ for (let i = 0; i < batch.ids.length; i++)
     status: 'completed',
     html: output(models[i].name),
     raw: output(models[i].name),
-    metrics: { durationMs: 12345 + i * 1000, inputTokens: 100, outputTokens: 1000, reasoningTokens: i === 0 ? 200 : null, cost: 0 },
+    metrics: { durationMs: 12345 + i * 1000, inputTokens: 100 + i * 20, outputTokens: 1000 + i * 700, reasoningTokens: i === 0 ? 200 : null, cost: i * .12 },
     finished_at: new Date().toISOString(),
   });
 store.updateRun(batch.ids.at(-1), { status: 'failed', html: null, raw: 'Fixture provider failure', error: 'Fixture provider failure' });
@@ -41,7 +41,7 @@ const secondBatch = store.enqueue([store.prompts()[0].id, store.prompts()[1].id]
 for (const id of secondBatch.ids) {
   const run = store.run(id);
   store.updateRun(id, { status: 'completed', html: output(run.model_name), raw: output(run.model_name),
-    metrics: { durationMs: 12000, cost: 0 }, finished_at: new Date().toISOString() });
+    metrics: { durationMs: 12000, inputTokens: 120, outputTokens: 3000, reasoningTokens: 900, cost: .35 }, finished_at: new Date().toISOString() });
 }
 store.updateRun(secondBatch.ids.at(-1), { status: 'failed', html: null, raw: 'Fixture provider failure', error: 'Fixture provider failure' });
 const runner = new Runner(store, {

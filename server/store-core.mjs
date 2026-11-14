@@ -230,6 +230,17 @@ export class StoreCore {
         }
       : undefined;
   }
+  galleryIndex() {
+    return {
+      prompts: this.prompts(true),
+      analytics: this.runs().map(run => ({
+        id: run.id, batch_id: run.batch_id, prompt_id: run.prompt_id, version_id: run.version_id,
+        version: run.version, prompt_title: run.prompt_title, model_id: run.model_id, model_name: run.model_name,
+        created_at: run.created_at, status: run.status, metrics: run.metrics,
+        config: run.config.reasoningEffort === undefined ? {} : { reasoningEffort: run.config.reasoningEffort },
+      })),
+    };
+  }
   run(id) {
     return this.decodeRun(
       this.db

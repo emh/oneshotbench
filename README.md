@@ -2,7 +2,7 @@
 
 A benchmark studio for comparing one-shot web implementations across OpenRouter models. The admin and gallery are separate native JavaScript apps served directly from source, with zero third-party packages and no build step.
 
-The hosted admin and API run on Cloudflare, protected by Cloudflare Access. Prompts, versions, settings, and run metadata live in a SQLite Durable Object; generated HTML and raw responses live in a private R2 bucket. Workflows execute model requests. GitHub Pages serves the public gallery, which reads completed results from a separate read-only Cloudflare endpoint.
+The hosted admin and API run on Cloudflare, protected by Cloudflare Access. Prompts, versions, settings, and run metadata live in a SQLite Durable Object; generated HTML and raw responses live in a private R2 bucket. Workflows execute model requests. GitHub Pages serves the public gallery, which reads completed implementations, the prompt directory, and run usage metadata from a separate read-only Cloudflare endpoint.
 
 - [Admin](https://oneshotbench.emh.workers.dev/)
 - [Public gallery](https://emh.io/oneshotbench/)
@@ -36,7 +36,13 @@ Failed runs have a **Retry** button in the list and run details. Select multiple
 
 **Max output tokens** has no 128k application ceiling. It accepts whole-number limits of at least 256, including values above 128k; the selected model/provider still enforces its own supported limits.
 
-The gallery groups completed results by batch, newest first, with the submission date/time, prompt versions, and models above each batch's previews. Prompt/model/reasoning filters hide matching cards in place; selection and returning from comparison preserve the existing preview documents and their state. Runs also support reasoning-level filtering. **Default** matches runs with no explicit effort, including older runs; it does not infer a provider's effort. Batch summaries describe all completed results in that batch, even while filters hide some of them. Reload the page to fetch new results.
+The gallery groups completed results by batch, newest first, with the submission date/time, prompt versions, and models above each batch's previews. Prompt, model, reasoning level, version, and batch filters hide matching cards in place; selection and returning from comparison preserve the existing preview documents and their state. Runs also support reasoning-level filtering. **Default** matches runs with no explicit effort, including older runs; it does not infer a provider's effort. Batch summaries describe all completed results in that batch, even while filters hide some of them. Reload the page to fetch new results.
+
+Every gallery card has a **Permalink** (`?run=RUN_ID`). Filter changes update the URL, so copying the address shares the same view; reload and browser back/forward restore it. Existing `?compare=ID,ID` links still work, and comparison column counts can also be shared. URLs use query parameters so they work directly on GitHub Pages without server routing.
+
+**Prompts** (`?view=prompts`) lists every prompt, including unused drafts and archived prompts, with its text and version history. Each prompt and version links to its filtered results.
+
+**Cost & tokens** (`?view=scatter`) plots one point per run with recorded cost and token usage, including failed attempts. Filter by prompt, model, reasoning level, version, batch, or status. The horizontal axis can use total, input, output, or reasoning tokens; the vertical axis is recorded USD cost. Missing values are excluded and counted, while zero-cost runs remain visible. Total tokens use the reported total or input + output; reasoning tokens are already included in output and are never added again. Hover or focus a dot to inspect it, click to open its run, or use **Inspect run** to distinguish overlapping points. Chart filters and token metric are also stored in the URL.
 
 In **New run**, each **All** checkbox selects or clears its entire prompt/model list and reflects partial selection. Selecting all models resets every model to its default effort.
 
@@ -75,7 +81,7 @@ The local server serves the admin at http://127.0.0.1:4310/ and gallery at http:
 npm run export:gallery
 ```
 
-This creates `exports/gallery/`, containing the standalone gallery and a `data.json` snapshot of completed runs. It includes prompt text, generated HTML, model identities, settings captured with runs, and usage metadata. It excludes credentials, active jobs, failed results, private model selections, the database, and admin endpoints. Exported pages use relative asset URLs and query-string comparison links, suitable for a GitHub Pages subdirectory or Cloudflare static hosting. Serve this directory over HTTP rather than opening `index.html` with `file://`. Export again to update the snapshot. Nothing is deployed automatically.
+This creates `exports/gallery/`, containing the standalone gallery and a `data.json` snapshot. It includes all prompts and versions (including unused drafts and archived prompts), completed implementations with captured generation settings, and model/status/usage metadata for all runs. It excludes credentials, raw responses, failed output/error details, private model selections, the database, and admin endpoints. Exported pages use relative asset URLs and query-string links, suitable for a GitHub Pages subdirectory or Cloudflare static hosting. Serve this directory over HTTP rather than opening `index.html` with `file://`. Export again to update the snapshot. Nothing is deployed automatically.
 
 ## Storage and source layout
 

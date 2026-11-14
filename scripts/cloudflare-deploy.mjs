@@ -12,6 +12,7 @@ export function deployment(config, first = false) {
       [`apps/${app}/main.js.txt`, `apps/${app}/main.js`, 'text/plain'],
     ]),
     ['apps/shared/dom.js.txt', 'apps/shared/dom.js', 'text/plain'],
+    ['apps/shared/gallery.js.txt', 'apps/shared/gallery.js', 'text/plain'],
     ['apps/shared/styles.css', 'apps/shared/styles.css', 'text/plain'],
   ].map(([name, source, type]) => ({ name, type, source: readFileSync(resolve(root, source), 'utf8') }));
   const metadata = {

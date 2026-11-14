@@ -308,6 +308,7 @@ test('admin API validates input, protects mutations, and never returns credentia
       ['/', `apps/${prefix ? 'gallery' : 'admin'}/index.html`],
       ['/app/main.js', `apps/${prefix ? 'gallery' : 'admin'}/main.js`],
       ['/shared/dom.js', 'apps/shared/dom.js'],
+      ['/shared/gallery.js', 'apps/shared/gallery.js'],
       ['/shared/styles.css', 'apps/shared/styles.css'],
     ]) {
       const response = await fetch(`${base}${prefix}${path}`);
@@ -479,6 +480,8 @@ test('gallery export is standalone, completed-only, and excludes private configu
   assert.equal(data.mode, 'static');
   assert.equal(data.runs.length, 1);
   assert.equal(data.runs[0].html, html);
+  assert.equal(data.prompts.length, 1);
+  assert.equal(data.analytics.length, 2);
   assert.ok(!('raw' in data.runs[0]));
   assert.ok(!('selectedModels' in data.settings));
   assert.ok(!output.includes('do-not-export-me'));
@@ -486,7 +489,7 @@ test('gallery export is standalone, completed-only, and excludes private configu
     readFileSync(resolve(dir, 'exports/gallery/index.html'), 'utf8'),
     /meta name="oneshot-export"/,
   );
-  for (const file of ['app/main.js', 'shared/dom.js', 'shared/styles.css'])
+  for (const file of ['app/main.js', 'shared/dom.js', 'shared/gallery.js', 'shared/styles.css'])
     assert.ok(readFileSync(resolve(dir, 'exports/gallery', file), 'utf8').length > 0);
   rmSync(dir, { recursive: true, force: true });
 });
