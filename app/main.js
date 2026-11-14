@@ -5,6 +5,8 @@ import {
   badge,
   name,
   runModelName,
+  reasoningFilterOptions,
+  runEffort,
   money,
   tokens,
   tokenUsage,
@@ -20,7 +22,8 @@ let data,
   compare = [],
   columns = null,
   prompt = '',
-  model = '';
+  model = '',
+  effort = '';
 function readURL() {
   compare = [
     ...new Set(
@@ -64,12 +67,13 @@ function mountGallery() {
     button('Clear', () => { selected.clear(); updateGallery(); }), compareButton);
   const promptFilter = select('Filter gallery by prompt', [], prompt, v => { prompt = v; updateGallery(); });
   const modelFilter = select('Filter gallery by model', [], model, v => { model = v; updateGallery(); });
+  const effortFilter = select('Filter gallery by reasoning level', reasoningFilterOptions, effort, v => { effort = v; updateGallery(); });
   const notice = h('div', { role: 'status' });
   galleryView = h('div', { class: 'gallery-app' },
     h('header', { class: 'gallery-header' },
       h('a', { href: './', class: 'brand' }, h('span', { class: 'brand-mark' }, '⌘'), 'ONESHOT')),
     h('main', { class: 'gallery-content' },
-      h('div', { class: 'toolbar standalone gallery-filters' }, promptFilter, modelFilter, resultCount),
+      h('div', { class: 'toolbar standalone gallery-filters' }, promptFilter, modelFilter, effortFilter, resultCount),
       notice, batchList, noResults, selectionBar));
   comparisonHost = h('div', { hidden: true });
   galleryControls = { resultCount, batchList, noResults, selectionCount, selectionBar,
@@ -163,7 +167,8 @@ function updateGallery() {
   let visible = 0;
   for (const entry of cards.values()) {
     const r = entry.run;
-    const matches = (!prompt || r.prompt_id === prompt) && (!model || r.model_id === model);
+    const matches = (!prompt || r.prompt_id === prompt) && (!model || r.model_id === model) &&
+      (!effort || runEffort(r) === effort);
     entry.card.hidden = !matches;
     if (matches) visible++;
     entry.card.classList.toggle('selected', selected.has(r.id));
