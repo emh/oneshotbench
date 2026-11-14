@@ -6,7 +6,7 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 export function deployment(config, first = false) {
   const modules = [
     ...readdirSync(resolve(root, 'cloudflare')).filter(f => f.endsWith('.mjs')).map(f => [`cloudflare/${f}`, `cloudflare/${f}`, 'application/javascript+module']),
-    ...['store-core', 'format', 'validation'].map(f => [`server/${f}.mjs`, `server/${f}.mjs`, 'application/javascript+module']),
+    ...['store-core', 'format', 'validation', 'reasoning'].map(f => [`server/${f}.mjs`, `server/${f}.mjs`, 'application/javascript+module']),
     ...['admin', 'gallery'].flatMap(app => [
       [`apps/${app}/index.html`, `apps/${app}/index.html`, 'text/plain'],
       [`apps/${app}/main.js.txt`, `apps/${app}/main.js`, 'text/plain'],

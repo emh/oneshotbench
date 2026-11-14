@@ -7,7 +7,9 @@ import {
   input,
   badge,
   name,
+  runModelName,
   money,
+  tokens,
   duration,
   date,
   failure,
@@ -145,7 +147,7 @@ function renderRuns(container) {
         (!f.model || r.model_id === f.model) &&
         (!f.prompt || r.prompt_id === f.prompt) &&
         (!f.status || r.status === f.status) &&
-        (r.prompt_title + ' ' + r.model_name + ' ' + r.id)
+        (r.prompt_title + ' ' + runModelName(r) + ' ' + r.id)
           .toLowerCase()
           .includes(f.search.toLowerCase()),
     )
@@ -208,7 +210,7 @@ function renderRuns(container) {
       h(
         'tr',
         {},
-        ['', 'IMPLEMENTATION', 'MODEL', 'STATUS', 'DURATION', 'COST', 'CREATED', ''].map((t) =>
+        ['', 'IMPLEMENTATION', 'MODEL', 'STATUS', 'DURATION', 'TOKENS', 'COST', 'CREATED', ''].map((t) =>
           h('th', {}, t),
         ),
       ),
@@ -254,7 +256,7 @@ function renderRuns(container) {
           h(
             'td',
             {},
-            h('strong', { class: 'model-name' }, name(r.model_name)),
+            h('strong', { class: 'model-name' }, runModelName(r)),
             h('small', {}, r.model_id),
           ),
           h(
@@ -264,6 +266,7 @@ function renderRuns(container) {
             failure(r) ? button(failure(r), () => detail(r.id), 'failure') : null,
           ),
           h('td', { class: 'mono' }, duration(r)),
+          h('td', {}, tokens(r.metrics)),
           h('td', { class: 'mono' }, money(r.metrics?.cost)),
           h('td', { class: 'mono' }, date(r.created_at)),
           h(
@@ -301,21 +304,27 @@ function newRun(initialPromptId, initialVersionId) {
     promptVersions = Object.fromEntries(state.prompts.map(p => [p.id,
       p.id === initialPromptId ? initialVersionId || p.version_id : p.version_id])),
     modelIds = new Set(state.settings.selectedModels.map((m) => m.id));
-  let temperature = state.settings.temperature,
-    maxTokens = state.settings.maxTokens;
+  const enabledModels = state.settings.selectedModels;
+  const efforts = new Map(enabledModels.map(m => [m.id, new Set(['default'])]));
+  const modelArea = h('div', { class: 'choices' }, h('div', { class: 'empty' }, 'Loading models…'));
+  let capabilitiesLoaded = false, submitting = false;
   const summary = h('code', {}),
     error = h('div', {});
   let dialog;
   const submit = button(
     'Start run',
     async () => {
+      if (submitting) return;
+      submitting = true;
       submit.disabled = true;
       error.replaceChildren();
       try {
         await mutate(
           '/runs',
           'POST',
-          { promptIds: [...promptIds], modelIds: [...modelIds], temperature, maxTokens,
+          { promptIds: [...promptIds],
+            modelVariants: [...modelIds].flatMap(modelId => [...efforts.get(modelId)].map(effort =>
+              ({ modelId, ...(effort !== 'default' ? { reasoningEffort: effort } : {}) }))),
             promptVersions: Object.fromEntries([...promptIds].map(id => [id, promptVersions[id]])) },
           'Run submitted',
         );
@@ -324,15 +333,17 @@ function newRun(initialPromptId, initialVersionId) {
       } catch (e) {
         error.replaceChildren(errorBox(e.message));
       } finally {
+        submitting = false;
         update();
       }
     },
     'primary',
   );
   function update() {
-    const n = promptIds.size * modelIds.size;
+    const n = promptIds.size * [...modelIds].reduce((sum, id) => sum + efforts.get(id).size, 0);
+    modelArea.querySelectorAll('fieldset').forEach(node => { node.disabled = !modelIds.has(node.dataset.modelId); });
     summary.textContent = n + ' implementations';
-    submit.disabled = !n || n > 200 || !state.keyConfigured;
+    submit.disabled = submitting || !capabilitiesLoaded || !n || n > 200 || !state.keyConfigured || [...modelIds].some(id => !efforts.get(id).size);
   }
   function choice(id, label, meta, set) {
     return h(
@@ -389,13 +400,7 @@ function newRun(initialPromptId, initialVersionId) {
       'section',
       {},
       h('h3', {}, 'Models'),
-      h(
-        'div',
-        { class: 'choices' },
-        state.settings.selectedModels.length
-          ? state.settings.selectedModels.map((m) => choice(m.id, name(m.name), m.id, modelIds))
-          : link('Configure models', '#models'),
-      ),
+      modelArea,
     ),
   );
   dialog = modal(
@@ -404,32 +409,48 @@ function newRun(initialPromptId, initialVersionId) {
       'div',
       {},
       grid,
-      h(
-        'div',
-        { class: 'fields' },
-        field(
-          'Temperature',
-          input('Temperature', temperature, (v) => (temperature = Number(v)), {
-            type: 'number',
-            min: 0,
-            max: 2,
-            step: 0.1,
-          }),
-        ),
-        field(
-          'Max output tokens',
-          input('Max output tokens', maxTokens, (v) => (maxTokens = Number(v)), {
-            type: 'number',
-            min: 256,
-            max: 128000,
-          }),
-        ),
-      ),
       error,
     ),
     [summary, button('Cancel', () => dialog.close()), submit],
   );
+  async function loadChoices() {
+    try {
+      const catalog = (await api('/models')).models;
+      if (!dialog.isConnected) return;
+      modelArea.replaceChildren(...enabledModels.map(m => {
+        const capabilities = catalog.find(n => n.id === m.id);
+        const options = capabilities?.reasoningEfforts || [];
+        const checks = [];
+        const fieldset = options.length ? h('fieldset', { class: 'reasoning-choices', 'data-model-id': m.id },
+          h('legend', {}, 'Reasoning effort'),
+          ['default', ...options].map(effort => {
+            const checkbox = h('input', { type: 'checkbox', checked: effort === 'default',
+              'aria-label': name(m.name) + ' reasoning ' + effort,
+              onChange: event => {
+                const values = efforts.get(m.id);
+                if (event.target.checked) {
+                  if (effort === 'default') values.clear();
+                  else values.delete('default');
+                  values.add(effort);
+                } else values.delete(effort);
+                checks.forEach(item => { item.checkbox.checked = values.has(item.effort); });
+                update();
+              } });
+            checks.push({ checkbox, effort });
+            return h('label', { class: 'inline-check' }, checkbox,
+              effort === 'default' ? 'Default' + (capabilities.defaultReasoningEffort ? ' (' + capabilities.defaultReasoningEffort + ')' : '') : effort);
+          })) : null;
+        return h('div', { class: 'run-model-choice' }, choice(m.id, name(m.name), m.id, modelIds), fieldset);
+      }));
+      if (!enabledModels.length) modelArea.append(link('Configure models', '#models'));
+      capabilitiesLoaded = true;
+      update();
+    } catch (e) {
+      if (dialog.isConnected) modelArea.replaceChildren(errorBox(e.message), button('Retry', loadChoices));
+    }
+  }
   update();
+  loadChoices();
 }
 function renderPrompts(container) {
   const f = filters.prompts;
@@ -905,9 +926,10 @@ async function detail(id) {
         'div',
         { class: 'detail-summary' },
         badge(run.status, run.status),
-        h('strong', {}, name(run.model_name)),
+        h('strong', {}, runModelName(run)),
         badge('v' + run.version),
         h('code', {}, duration(run)),
+        tokens(run.metrics),
         h('code', {}, money(run.metrics?.cost)),
       ),
     );

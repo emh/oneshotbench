@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { readFileSync, writeFileSync, renameSync, existsSync } from 'node:fs';
 import { resolve, extname } from 'node:path';
 import { safeDocument, PREVIEW_CSP } from './format.mjs';
+import { modelCatalog, variants, validateEfforts } from './reasoning.mjs';
 
 import { bad, text, number, promptBody, ids } from './validation.mjs';
 async function bodyOf(req) {
@@ -28,8 +29,7 @@ export function createApp({
   fetchImpl = fetch,
   root = process.cwd(),
 }) {
-  let catalog = null,
-    catalogAt = 0;
+  const loadCatalog = modelCatalog(fetchImpl);
   const json = (res, status, value) => {
     res.writeHead(status, {
       'Content-Type': 'application/json',
@@ -126,30 +126,8 @@ export function createApp({
           if (!response.ok) throw bad(`OpenRouter rejected the key (${response.status}).`, 502);
           return json(res, 200, { ok: true });
         }
-        if (req.method === 'GET' && path === '/api/models') {
-          if (!catalog || Date.now() - catalogAt > 3600000 || url.searchParams.has('refresh')) {
-            const response = await fetchImpl('https://openrouter.ai/api/v1/models', {
-              signal: AbortSignal.timeout(20000),
-            });
-            if (!response.ok) throw bad(`Model catalog unavailable (${response.status}).`, 502);
-            const data = await response.json();
-            catalog = (data.data || [])
-              .filter(
-                (m) =>
-                  !m.architecture?.output_modalities ||
-                  m.architecture.output_modalities.includes('text'),
-              )
-              .map((m) => ({
-                id: m.id,
-                name: m.name,
-                context_length: m.context_length,
-                pricing: m.pricing,
-                description: m.description,
-              }));
-            catalogAt = Date.now();
-          }
-          return json(res, 200, { models: catalog, fetchedAt: new Date(catalogAt).toISOString() });
-        }
+        if (req.method === 'GET' && path === '/api/models')
+          return json(res, 200, { models: await loadCatalog(url.searchParams.has('refresh')), fetchedAt: new Date().toISOString() });
         if (req.method === 'POST' && path === '/api/prompts')
           return json(res, 201, store.createPrompt(promptBody(await bodyOf(req))));
         const promptMatch = path.match(/^\/api\/prompts\/([^/]+)$/);
@@ -164,9 +142,10 @@ export function createApp({
           if (!getKey()) throw bad('Add an OpenRouter API key in Settings first.');
           const body = await bodyOf(req),
             promptIds = ids(body.promptIds),
-            modelIds = ids(body.modelIds);
+            modelIds = variants(body.modelVariants ?? ids(body.modelIds));
           if (promptIds.length * modelIds.length > 200)
             throw bad('A batch can include at most 200 implementations.');
+          await validateEfforts(modelIds, store.settings().selectedModels, loadCatalog);
           const overrides = {};
           if ('temperature' in body)
             overrides.temperature = number(body.temperature, 0, 2, 'Temperature');

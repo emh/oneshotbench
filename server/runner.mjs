@@ -50,6 +50,7 @@ export class Runner {
           ],
           temperature: run.config.temperature,
           max_tokens: run.config.maxTokens,
+          ...(run.config.reasoningEffort !== undefined ? { reasoning: { effort: run.config.reasoningEffort } } : {}),
           stream: false,
           provider: { allow_fallbacks: false },
         }),
@@ -65,6 +66,7 @@ export class Runner {
         durationMs: Date.now() - start,
         inputTokens: data.usage?.prompt_tokens ?? null,
         outputTokens: data.usage?.completion_tokens ?? null,
+        reasoningTokens: data.usage?.completion_tokens_details?.reasoning_tokens ?? null,
         totalTokens: data.usage?.total_tokens ?? null,
         cost: data.usage?.cost ?? null,
       };

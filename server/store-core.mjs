@@ -1,4 +1,5 @@
 import { OUTPUT_INSTRUCTIONS, HARNESS_VERSION } from './format.mjs';
+import { variants } from './reasoning.mjs';
 
 export const defaults = {
   minWidth: 1200,
@@ -128,6 +129,9 @@ export class StoreCore {
     return this.db.prepare('UPDATE prompts SET archived=? WHERE id=?').run(archived ? 1 : 0, id);
   }
   enqueue(promptIds, modelIds, overrides = {}, promptVersions = {}) {
+    const choices = variants(modelIds);
+    if (promptIds.length * choices.length > 200)
+      throw Object.assign(new Error('A batch can include at most 200 implementations.'), { status: 400 });
     if (!promptVersions || typeof promptVersions !== 'object' || Array.isArray(promptVersions) ||
       Object.entries(promptVersions).some(([id, version]) => !promptIds.includes(id) || typeof version !== 'string' || !version))
       throw Object.assign(new Error('Choose a valid version for each selected prompt.'), { status: 400 });
@@ -135,7 +139,10 @@ export class StoreCore {
       const settings = this.settings(),
         batchId = crypto.randomUUID(),
         now = new Date().toISOString();
-      const models = modelIds.map((id) => settings.selectedModels.find((m) => m.id === id));
+      const models = choices.map(choice => {
+        const model = settings.selectedModels.find(m => m.id === choice.modelId);
+        return model ? { ...model, reasoningEffort: choice.reasoningEffort } : null;
+      });
       const prompts = promptIds.map((id) => {
         const prompt = this.prompt(id);
         if (!prompt || !Object.hasOwn(promptVersions, id)) return prompt;
@@ -177,7 +184,7 @@ export class StoreCore {
               model.name,
               now,
               'queued',
-              JSON.stringify(config),
+              JSON.stringify({ ...config, ...(model.reasoningEffort !== undefined ? { reasoningEffort: model.reasoningEffort } : {}) }),
             );
         }
       }

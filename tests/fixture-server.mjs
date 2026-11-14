@@ -13,6 +13,7 @@ const models = Array.from({ length: 9 }, (_, i) => ({
   context_length: 32000,
   pricing: { prompt: '0', completion: '0' },
   description: 'Deterministic browser test model. No real API calls.',
+  ...(i === 0 ? { reasoning: { supported_efforts: ['high', 'medium', 'low'], default_effort: 'medium', mandatory: true } } : {}),
 }));
 store.saveSettings({ selectedModels: models });
 function output(model) {
@@ -27,7 +28,7 @@ for (let i = 0; i < batch.ids.length; i++)
     status: 'completed',
     html: output(models[i].name),
     raw: output(models[i].name),
-    metrics: { durationMs: 12345 + i * 1000, inputTokens: 100, outputTokens: 1000, cost: 0 },
+    metrics: { durationMs: 12345 + i * 1000, inputTokens: 100, outputTokens: 1000, reasoningTokens: i === 0 ? 200 : null, cost: 0 },
     finished_at: new Date().toISOString(),
   });
 const versioned = store.prompts()[0];

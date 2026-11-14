@@ -107,6 +107,21 @@ test('hosted run API selects historical versions without locking the newest draf
   assert.equal(store.run((await next.json()).ids[0]).version_id, latest.version_id);
 });
 
+test('hosted API validates effort variants before locking or enqueuing prompts', async t => {
+  const { store, workspace } = fixture(t);
+  workspace.models = async () => [{ id: 'test/model', reasoningEfforts: ['medium', 'high'] }];
+  const prompt = store.createPrompt({ title: 'Matrix', category: 'Test', content: 'Build' });
+  const post = modelVariants => workspace.fetch(request('/api/runs', { promptIds: [prompt.id], modelVariants }));
+  assert.equal((await post([{ modelId: 'test/model', reasoningEffort: 'none' }])).status, 400);
+  assert.equal(store.prompt(prompt.id).locked_at, null);
+  assert.equal(store.runs().length, 0);
+  const result = await post([{ modelId: 'test/model', reasoningEffort: 'medium' }, { modelId: 'test/model', reasoningEffort: 'high' }]);
+  assert.equal(result.status, 201);
+  const runs = (await result.json()).ids.map(id => store.run(id));
+  assert.deepEqual(runs.map(r => r.config.reasoningEffort), ['medium', 'high']);
+  assert.equal(runs[0].batch_id, runs[1].batch_id);
+});
+
 test('a failed artifact write cannot cause another model request', async t => {
   const { store, workspace, env, jobs } = fixture(t);
   const p = store.createPrompt({ title: 'Test', category: 'Test', content: 'Build' });

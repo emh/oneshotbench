@@ -11,6 +11,7 @@ export async function generate(run, key, fetchImpl = fetch) {
       body: JSON.stringify({ model: run.model_id, messages: [
         { role: 'system', content: run.config.systemPrompt }, { role: 'user', content: run.prompt_content },
       ], temperature: run.config.temperature, max_tokens: run.config.maxTokens,
+      ...(run.config.reasoningEffort !== undefined ? { reasoning: { effort: run.config.reasoningEffort } } : {}),
       stream: false, provider: { allow_fallbacks: false } }),
     });
     const data = await response.json();
@@ -19,6 +20,7 @@ export async function generate(run, key, fetchImpl = fetch) {
     result.raw = typeof choice?.message?.content === 'string' ? choice.message.content : '';
     result.metrics = { durationMs: Date.now() - start, inputTokens: data.usage?.prompt_tokens ?? null,
       outputTokens: data.usage?.completion_tokens ?? null, totalTokens: data.usage?.total_tokens ?? null,
+      reasoningTokens: data.usage?.completion_tokens_details?.reasoning_tokens ?? null,
       cost: data.usage?.cost ?? null };
     Object.assign(result, { provider: data.provider ?? null, response_id: data.id ?? null,
       finish_reason: choice?.finish_reason ?? null, resolved_model: data.model ?? null });

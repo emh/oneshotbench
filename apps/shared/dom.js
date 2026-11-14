@@ -31,8 +31,20 @@ export const input = (label, value, action, attrs = {}) =>
 export const badge = (text, kind = '') => h('span', { class: 'badge ' + kind }, text);
 export const name = (s) =>
   s.replace(/^(OpenAI|Anthropic|Google|Meta|DeepSeek|Qwen|Mistral|xAI):\s*/i, '');
+export const runModelName = run => name(run.model_name) +
+  (run.config?.reasoningEffort !== undefined ? ' · ' + run.config.reasoningEffort : '');
 export const money = (n) =>
   n == null ? '—' : n === 0 ? '$0.00' : '$' + n.toFixed(n < 0.01 ? 4 : 3);
+export function tokenUsage(metrics = {}) {
+  const parts = [['inputTokens', 'in'], ['outputTokens', 'out']]
+    .filter(([key]) => metrics?.[key] != null)
+    .map(([key, label]) => metrics[key].toLocaleString() + ' ' + label);
+  if (!parts.length && metrics?.totalTokens != null) parts.push(metrics.totalTokens.toLocaleString() + ' total');
+  if (metrics?.reasoningTokens != null) parts.push(metrics.reasoningTokens.toLocaleString() + ' reasoning');
+  return parts.length ? parts.join(' / ') : '—';
+}
+export const tokens = metrics => h('span', { class: 'token-usage mono',
+  title: 'Token usage: input / output / reasoning (included in output)' }, tokenUsage(metrics));
 export const duration = (r) => {
   const n =
     r.metrics?.durationMs ??

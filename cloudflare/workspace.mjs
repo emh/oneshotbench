@@ -4,10 +4,12 @@ import { api, json } from './api.mjs';
 import { seal, unseal } from './auth.mjs';
 import { bad } from '../server/validation.mjs';
 import { importSnapshot } from './import.mjs';
+import { modelCatalog } from '../server/reasoning.mjs';
 
 export class WorkspaceService {
-  constructor(ctx, env) {
+  constructor(ctx, env, { fetchImpl = fetch } = {}) {
     this.ctx = ctx; this.env = env;
+    this.models = modelCatalog(fetchImpl);
     this.store = new StoreCore(database(ctx.storage), { seed: false });
     this.store.db.exec('CREATE TABLE IF NOT EXISTS attempts (id TEXT PRIMARY KEY, claimed_at TEXT NOT NULL); CREATE TABLE IF NOT EXISTS private (name TEXT PRIMARY KEY, value TEXT NOT NULL)');
   }

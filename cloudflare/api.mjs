@@ -1,5 +1,6 @@
 import { bad, text, number, promptBody, ids } from '../server/validation.mjs';
 import { safeDocument, PREVIEW_CSP } from '../server/format.mjs';
+import { variants, validateEfforts } from '../server/reasoning.mjs';
 
 export const json = (value, status = 200) => Response.json(value, {
   status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' },
@@ -67,12 +68,7 @@ export async function api(request, workspace) {
     return json({ ok: true });
   }
   if (method === 'GET' && path === '/api/models') {
-    const response = await fetch('https://openrouter.ai/api/v1/models', { signal: AbortSignal.timeout(20000) });
-    if (!response.ok) throw bad(`Model catalog unavailable (${response.status}).`, 502);
-    const data = await response.json();
-    return json({ models: (data.data || []).filter(m => !m.architecture?.output_modalities || m.architecture.output_modalities.includes('text')).map(m => ({
-      id: m.id, name: m.name, context_length: m.context_length, pricing: m.pricing, description: m.description,
-    })), fetchedAt: new Date().toISOString() });
+    return json({ models: await workspace.models(url.searchParams.has('refresh')), fetchedAt: new Date().toISOString() });
   }
   if (method === 'POST' && path === '/api/prompts') return json(store.createPrompt(promptBody(await bodyOf(request))), 201);
   const prompt = path.match(/^\/api\/prompts\/([^/]+)$/);
@@ -84,8 +80,9 @@ export async function api(request, workspace) {
   }
   if (method === 'POST' && path === '/api/runs') {
     if (!key) throw bad('Add an OpenRouter API key in Settings first.');
-    const body = await bodyOf(request), promptIds = ids(body.promptIds), modelIds = ids(body.modelIds);
+    const body = await bodyOf(request), promptIds = ids(body.promptIds), modelIds = variants(body.modelVariants ?? ids(body.modelIds));
     if (promptIds.length * modelIds.length > 200) throw bad('A batch can include at most 200 implementations.');
+    await validateEfforts(modelIds, store.settings().selectedModels, workspace.models);
     const overrides = {};
     if ('temperature' in body) overrides.temperature = number(body.temperature, 0, 2, 'Temperature');
     if ('maxTokens' in body) overrides.maxTokens = number(body.maxTokens, 256, 128000, 'Output tokens', true);
