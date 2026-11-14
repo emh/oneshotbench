@@ -284,17 +284,8 @@ function comparison() {
           'header',
           { class: 'tile-heading' },
           h('code', {}, String(i + 1).padStart(2, '0')),
-          select(
-            'Result in tile ' + (i + 1),
-            available
-              .filter((n) => n.id === r.id || !compare.includes(n.id))
-              .map((n) => [
-                n.id,
-                runModelName(n) + ' · v' + n.version + ' · ' + n.id.slice(0, 6),
-              ]),
-            r.id,
-            (v) => open(compare.map((id, index) => (index === i ? v : id))),
-          ),
+          h('span', { class: 'tile-result', title: runModelName(r) + ' · v' + r.version + ' · ' + r.id },
+            runModelName(r) + ' · v' + r.version + ' · ' + r.id.slice(0, 6)),
           h('code', {}, duration(r)),
           tokens(r.metrics),
           h('code', {}, money(r.metrics?.cost)),

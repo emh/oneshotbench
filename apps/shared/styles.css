@@ -918,11 +918,13 @@ summary {
   padding: 0 12px;
   background: #21232a;
 }
-.tile-heading select {
-  border: 0;
-  background: transparent;
+.tile-result {
   margin-right: auto;
   max-width: 450px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .tile-heading code {
   font-size: 10px;
