@@ -228,6 +228,44 @@ test('retry creates a fresh job in the original batch with the exact failed requ
   const gallery = await workspace.fetch(new Request('https://admin.example.com/api/gallery'));
   assert.equal((await gallery.json()).runs[0].batch_id, original.batchId);
 });
+test('bulk retries are atomic, deduplicate selections, and retain each original batch', async t => {
+  const { store, workspace } = fixture(t);
+  const prompt = store.createPrompt({ title: 'Bulk retry', content: 'Build' });
+  const batches = Array.from({ length: 3 }, () => store.enqueue([prompt.id], ['test/model']));
+  const originals = batches.map(batch => batch.ids[0]);
+  originals.slice(0, 2).forEach(id => store.updateRun(id, { status: 'failed' }));
+  const post = ids => workspace.fetch(request('/api/runs/retry', { ids }));
+  assert.equal((await post(originals)).status, 409);
+  assert.equal((await post([originals[0], 'missing'])).status, 404);
+  assert.equal((await post([])).status, 400);
+  assert.equal(store.runs().length, 3);
+  const response = await post([originals[0], originals[1], originals[0]]);
+  assert.equal(response.status, 201);
+  const { ids } = await response.json();
+  assert.equal(ids.length, 2);
+  ids.forEach((id, index) => {
+    assert.equal(store.run(id).batch_id, batches[index].batchId);
+    assert.equal(store.run(id).status, 'queued');
+    assert.deepEqual(store.run(id).config, store.run(originals[index]).config);
+  });
+});
+
+test('hosted settings and run overrides accept token limits above 128k', async t => {
+  const { store, workspace } = fixture(t);
+  const prompt = store.createPrompt({ title: 'Large output', content: 'Build' });
+  const settings = await workspace.fetch(request('/api/settings', { maxTokens: 262144 }, 'PATCH'));
+  assert.equal(settings.status, 200);
+  assert.equal(store.settings().maxTokens, 262144);
+  const submit = async extra => {
+    const response = await workspace.fetch(request('/api/runs', { promptIds: [prompt.id], modelIds: ['test/model'], ...extra }));
+    assert.equal(response.status, 201);
+    return store.run((await response.json()).ids[0]);
+  };
+  assert.equal((await submit({})).config.maxTokens, 262144);
+  assert.equal((await submit({ maxTokens: 1048576 })).config.maxTokens, 1048576);
+  for (const value of [0, -1, 256.5, '262144', Number.MAX_SAFE_INTEGER + 1])
+    assert.equal((await workspace.fetch(request('/api/settings', { maxTokens: value }, 'PATCH'))).status, 400);
+});
 test('hosted API validates effort variants before locking or enqueuing prompts', async t => {
   const { store, workspace } = fixture(t);
   workspace.models = async () => [{ id: 'test/model', reasoningEfforts: ['medium', 'high'] }];

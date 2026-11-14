@@ -37,24 +37,38 @@ let selected = new Set(),
   settingsDraft = null;
 const viewedVersions = new Map();
 const retrying = new Set();
+function canRetrySelected() {
+  const runs = state.runs.filter(run => selected.has(run.id));
+  return runs.length > 0 && runs.every(run => run.status === 'failed' && !retrying.has(run.id));
+}
+function updateRetryControls() {
+  document.querySelectorAll('[data-retry-id]').forEach(node => {
+    const busy = retrying.has(node.dataset.retryId);
+    node.disabled = busy;
+    node.textContent = busy ? 'Retrying…' : 'Retry';
+  });
+  document.querySelectorAll('[data-retry-selected]').forEach(node => { node.disabled = !canRetrySelected(); });
+}
+async function retryRuns(ids) {
+  if (!ids.length || ids.some(id => retrying.has(id))) return;
+  ids.forEach(id => retrying.add(id));
+  updateRetryControls();
+  try {
+    const result = await api('/runs/retry', 'POST', { ids });
+    ids.forEach(id => selected.delete(id));
+    await refresh();
+    render();
+    toast(result.ids.length === 1 ? 'Retry queued' : result.ids.length + ' retries queued');
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    ids.forEach(id => retrying.delete(id));
+    updateRetryControls();
+  }
+}
 function retryButton(run) {
-  return button(retrying.has(run.id) ? 'Retrying…' : 'Retry', async () => {
-    if (retrying.has(run.id)) return;
-    retrying.add(run.id);
-    document.querySelectorAll('[data-retry-id]').forEach(node => {
-      if (node.dataset.retryId === run.id) { node.disabled = true; node.textContent = 'Retrying…'; }
-    });
-    try {
-      await mutate('/runs/' + run.id + '/retry', 'POST', {}, 'Retry queued');
-    } catch (error) {
-      toast(error.message);
-    } finally {
-      retrying.delete(run.id);
-      document.querySelectorAll('[data-retry-id]').forEach(node => {
-        if (node.dataset.retryId === run.id) { node.disabled = false; node.textContent = 'Retry'; }
-      });
-    }
-  }, '', { 'aria-label': 'Retry run ' + run.id, 'data-retry-id': run.id, disabled: retrying.has(run.id) });
+  return button(retrying.has(run.id) ? 'Retrying…' : 'Retry', () => retryRuns([run.id]), '',
+    { 'aria-label': 'Retry run ' + run.id, 'data-retry-id': run.id, disabled: retrying.has(run.id) });
 }
 async function refresh() {
   try {
@@ -319,6 +333,9 @@ function renderRuns(container) {
         button('Clear', () => {
           selected.clear();
           render();
+        }),
+        button('Retry selected', () => retryRuns([...selected]), '', {
+          'data-retry-selected': '', disabled: !canRetrySelected(), title: 'Retry selected failed runs',
         }),
         button('Delete selected', deleteSelectedRuns, 'danger'),
       ),
@@ -898,7 +915,7 @@ function renderSettings(container) {
         'div',
         { class: 'fields' },
         numeric('Temperature', 'temperature', 0, 2, 0.1),
-        numeric('Max output tokens', 'maxTokens', 256, 128000),
+        numeric('Max output tokens', 'maxTokens', 256),
         numeric('Concurrency', 'concurrency', 1, 8),
         numeric('Timeout · seconds', 'timeoutSeconds', 15, state.environment === 'CLOUDFLARE' ? 1740 : 1800),
       ),

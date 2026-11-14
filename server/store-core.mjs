@@ -189,15 +189,21 @@ export class StoreCore {
     });
   }
   retryRun(id) {
+    const result = this.retryRuns([id]);
+    return { batchId: this.run(result.ids[0]).batch_id, ...result };
+  }
+  retryRuns(ids) {
     return this.transaction(() => {
-      const run = this.run(id);
-      if (!run) throw Object.assign(new Error('Run not found'), { status: 404 });
-      if (run.status !== 'failed') throw Object.assign(new Error('Only failed runs can be retried.'), { status: 409 });
-      const retryId = crypto.randomUUID();
-      this.db.prepare('INSERT INTO runs (id,batch_id,version_id,model_id,model_name,created_at,status,config) VALUES (?,?,?,?,?,?,?,?)')
-        .run(retryId, run.batch_id, run.version_id, run.model_id, run.model_name,
-          new Date().toISOString(), 'queued', JSON.stringify(run.config));
-      return { batchId: run.batch_id, ids: [retryId] };
+      const runs = [...new Set(ids)].map(id => this.run(id));
+      if (runs.some(run => !run)) throw Object.assign(new Error('Run not found'), { status: 404 });
+      if (runs.some(run => run.status !== 'failed')) throw Object.assign(new Error('Only failed runs can be retried.'), { status: 409 });
+      return { ids: runs.map(run => {
+        const retryId = crypto.randomUUID();
+        this.db.prepare('INSERT INTO runs (id,batch_id,version_id,model_id,model_name,created_at,status,config) VALUES (?,?,?,?,?,?,?,?)')
+          .run(retryId, run.batch_id, run.version_id, run.model_id, run.model_name,
+            new Date().toISOString(), 'queued', JSON.stringify(run.config));
+        return retryId;
+      }) };
     });
   }
   runs({ details = false, completed = false } = {}) {

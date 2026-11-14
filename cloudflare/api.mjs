@@ -1,4 +1,4 @@
-import { bad, text, number, promptBody, ids, runIds } from '../server/validation.mjs';
+import { bad, text, number, promptBody, ids, runIds, outputTokens } from '../server/validation.mjs';
 import { safeDocument, PREVIEW_CSP } from '../server/format.mjs';
 import { variants, validateEfforts } from '../server/reasoning.mjs';
 
@@ -37,9 +37,10 @@ export async function api(request, workspace) {
     const body = await bodyOf(request), patch = {};
     for (const [name, min, max, int] of [
       ['minWidth', 320, 7680, true], ['minHeight', 240, 4320, true], ['columns', 1, 9, true],
-      ['concurrency', 1, 8, true], ['temperature', 0, 2, false], ['maxTokens', 256, 128000, true],
+      ['concurrency', 1, 8, true], ['temperature', 0, 2, false],
       ['timeoutSeconds', 15, 1740, true],
     ]) if (name in body) patch[name] = number(body[name], min, max, name, int);
+    if ('maxTokens' in body) patch.maxTokens = outputTokens(body.maxTokens);
     if ('systemPrompt' in body) patch.systemPrompt = text(body.systemPrompt, 'Output instructions', 20000);
     if ('selectedModels' in body) {
       if (!Array.isArray(body.selectedModels) || body.selectedModels.length > 100) throw bad('Select up to 100 models.');
@@ -85,10 +86,16 @@ export async function api(request, workspace) {
     await validateEfforts(modelIds, store.settings().selectedModels, workspace.models);
     const overrides = {};
     if ('temperature' in body) overrides.temperature = number(body.temperature, 0, 2, 'Temperature');
-    if ('maxTokens' in body) overrides.maxTokens = number(body.maxTokens, 256, 128000, 'Output tokens', true);
+    if ('maxTokens' in body) overrides.maxTokens = outputTokens(body.maxTokens);
     const result = store.enqueue(promptIds, modelIds, overrides, body.promptVersions);
     await workspace.wake();
     return json(result, 201);
+  }
+  if (method === 'POST' && path === '/api/runs/retry') {
+    if (!key) throw bad('Add an OpenRouter API key in Settings first.');
+    const ids = runIds((await bodyOf(request)).ids);
+    await workspace.wake();
+    return json(store.retryRuns(ids), 201);
   }
   if (method === 'DELETE' && path === '/api/runs')
     return json(await workspace.deleteRuns(runIds((await bodyOf(request)).ids)));

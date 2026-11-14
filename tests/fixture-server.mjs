@@ -43,6 +43,7 @@ for (const id of secondBatch.ids) {
   store.updateRun(id, { status: 'completed', html: output(run.model_name), raw: output(run.model_name),
     metrics: { durationMs: 12000, cost: 0 }, finished_at: new Date().toISOString() });
 }
+store.updateRun(secondBatch.ids.at(-1), { status: 'failed', html: null, raw: 'Fixture provider failure', error: 'Fixture provider failure' });
 const runner = new Runner(store, {
   getKey: () => 'fixture-only',
   fetchImpl: async (url, options) =>

@@ -22,6 +22,10 @@ export function promptBody(body) {
     baseVersionId: body.baseVersionId,
   };
 }
+export function outputTokens(value) {
+  if (!Number.isSafeInteger(value) || value < 256) throw bad('Output tokens must be a whole number of at least 256.');
+  return value;
+}
 export function ids(value) {
   if (!Array.isArray(value) || !value.length || value.some((x) => typeof x !== 'string'))
     throw bad('Select at least one prompt and one model.');

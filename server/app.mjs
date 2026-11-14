@@ -4,7 +4,7 @@ import { resolve, extname } from 'node:path';
 import { safeDocument, PREVIEW_CSP } from './format.mjs';
 import { modelCatalog, variants, validateEfforts } from './reasoning.mjs';
 
-import { bad, text, number, promptBody, ids, runIds } from './validation.mjs';
+import { bad, text, number, promptBody, ids, runIds, outputTokens } from './validation.mjs';
 async function bodyOf(req) {
   let body = '';
   for await (const chunk of req) {
@@ -80,10 +80,10 @@ export function createApp({
             ['columns', 1, 9, true],
             ['concurrency', 1, 8, true],
             ['temperature', 0, 2, false],
-            ['maxTokens', 256, 128000, true],
             ['timeoutSeconds', 15, 1800, true],
           ])
             if (name in body) patch[name] = number(body[name], min, max, name, int);
+          if ('maxTokens' in body) patch.maxTokens = outputTokens(body.maxTokens);
           if ('systemPrompt' in body)
             patch.systemPrompt = text(body.systemPrompt, 'Output instructions', 20000);
           if ('selectedModels' in body) {
@@ -150,8 +150,14 @@ export function createApp({
           if ('temperature' in body)
             overrides.temperature = number(body.temperature, 0, 2, 'Temperature');
           if ('maxTokens' in body)
-            overrides.maxTokens = number(body.maxTokens, 256, 128000, 'Output tokens', true);
+            overrides.maxTokens = outputTokens(body.maxTokens);
           const result = store.enqueue(promptIds, modelIds, overrides, body.promptVersions);
+          runner.pump();
+          return json(res, 201, result);
+        }
+        if (req.method === 'POST' && path === '/api/runs/retry') {
+          if (!getKey()) throw bad('Add an OpenRouter API key in Settings first.');
+          const result = store.retryRuns(runIds((await bodyOf(req)).ids));
           runner.pump();
           return json(res, 201, result);
         }

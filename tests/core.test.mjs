@@ -388,6 +388,31 @@ test('local retry API requires authorization and a key, then queues the failed s
   assert.equal(store.run(id).status, 'failed');
   assert.equal(pumps, 1);
 });
+test('local API supports large token settings and bulk retries across batches', async t => {
+  const { store, prompt } = fixture();
+  let pumps = 0;
+  const app = createApp({ store, runner: { pump() { pumps++; } }, getKey: () => 'fixture-key' });
+  await new Promise(resolve => app.listen(0, '127.0.0.1', resolve));
+  t.after(() => { app.close(); store.close(); });
+  const base = `http://127.0.0.1:${app.address().port}`;
+  const request = (path, method, body) => fetch(base + path, { method,
+    headers: { 'Content-Type': 'application/json', 'X-Oneshot-Client': 'admin' }, body: JSON.stringify(body) });
+  assert.equal((await request('/api/settings', 'PATCH', { maxTokens: 262144 })).status, 200);
+  const batches = [];
+  for (const maxTokens of [262144, 1048576]) {
+    const response = await request('/api/runs', 'POST', { promptIds: [prompt.id], modelIds: ['test/a'], maxTokens });
+    assert.equal(response.status, 201);
+    const batch = await response.json();
+    assert.equal(store.run(batch.ids[0]).config.maxTokens, maxTokens);
+    store.updateRun(batch.ids[0], { status: 'failed' });
+    batches.push(batch);
+  }
+  const pumpsBeforeRetry = pumps;
+  const response = await request('/api/runs/retry', 'POST', { ids: batches.flatMap(b => b.ids) });
+  assert.equal(response.status, 201);
+  (await response.json()).ids.forEach((id, index) => assert.equal(store.run(id).batch_id, batches[index].batchId));
+  assert.equal(pumps, pumpsBeforeRetry + 1);
+});
 test('bulk delete API protects mutations, cancels active runs, and removes results without unlocking prompts', async t => {
   const { store, prompt } = fixture();
   const runner = new Runner(store, { getKey: () => null });
