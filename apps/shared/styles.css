@@ -775,10 +775,11 @@ summary {
 .public-prompt { padding: 24px; min-width: 0; }
 .public-prompt .section-heading { flex-wrap: wrap; }
 .public-prompt h2 { margin: 0; font-size: 16px; }
-.public-prompt h3 { font-size: 12px; }
-.public-prompt-version { margin-top: 20px; }
+.public-prompt-title { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; min-width: 0; }
+.public-prompt-title select { width: auto; min-width: 64px; padding: 5px 8px; }
+.public-prompt .prompt-results { white-space: nowrap; text-decoration: none; }
+.public-prompt .prompt-results:hover { color: var(--text); border-color: var(--muted); }
 .public-prompt pre { white-space: pre-wrap; overflow-wrap: anywhere; }
-.public-prompt summary { cursor: pointer; }
 .gallery-content.scatter-content { max-width: 1600px; }
 .plot-panel { padding: 18px; }
 .scatterplot { width: 100%; max-height: 65vh; display: block; }
