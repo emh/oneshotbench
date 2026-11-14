@@ -363,7 +363,7 @@ test('admin API validates input, protects mutations, and never returns credentia
   assert.equal(gallery.runs.length, 0);
   assert.ok(!('selectedModels' in gallery.settings));
 });
-test('local retry API requires authorization and a key, then queues the failed snapshot in its original batch', async t => {
+test('local retry API requires authorization and a key, then queues a retry in its original batch', async t => {
   const { store, prompt } = fixture();
   const original = store.enqueue([prompt.id], ['test/a']);
   const id = original.ids[0];
@@ -410,7 +410,10 @@ test('local API supports large token settings and bulk retries across batches', 
   const pumpsBeforeRetry = pumps;
   const response = await request('/api/runs/retry', 'POST', { ids: batches.flatMap(b => b.ids) });
   assert.equal(response.status, 201);
-  (await response.json()).ids.forEach((id, index) => assert.equal(store.run(id).batch_id, batches[index].batchId));
+  (await response.json()).ids.forEach((id, index) => {
+    assert.equal(store.run(id).batch_id, batches[index].batchId);
+    assert.equal(store.run(id).config.maxTokens, 262144);
+  });
   assert.equal(pumps, pumpsBeforeRetry + 1);
 });
 test('bulk delete API protects mutations, cancels active runs, and removes results without unlocking prompts', async t => {

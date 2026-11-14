@@ -197,7 +197,7 @@ test('hosted run API selects historical versions without locking the newest draf
   assert.equal(store.run((await next.json()).ids[0]).version_id, latest.version_id);
 });
 
-test('retry creates a fresh job in the original batch with the exact failed request snapshot', async t => {
+test('retry uses current settings while retaining the original batch, prompt version, model, and effort', async t => {
   const { store, workspace, storage } = fixture(t);
   const prompt = store.createPrompt({ title: 'Retry', content: 'Original prompt' });
   const original = store.enqueue([prompt.id], [{ modelId: 'test/model', reasoningEffort: 'high' }]);
@@ -206,7 +206,8 @@ test('retry creates a fresh job in the original batch with the exact failed requ
     started_at: new Date().toISOString(), finished_at: new Date().toISOString() });
   const failed = store.run(id);
   store.editPrompt(prompt.id, { title: 'Updated', content: 'New prompt', baseVersionId: prompt.version_id });
-  store.saveSettings({ systemPrompt: 'Changed', temperature: 1.2, maxTokens: 1000, selectedModels: [] });
+  store.saveSettings({ systemPrompt: 'Changed', temperature: 1.2, maxTokens: 262144, timeoutSeconds: 600,
+    minWidth: 1600, minHeight: 1000, selectedModels: [] });
   const response = await workspace.fetch(request('/api/runs/' + id + '/retry', {}));
   assert.equal(response.status, 201);
   const result = await response.json();
@@ -217,7 +218,8 @@ test('retry creates a fresh job in the original batch with the exact failed requ
   assert.equal(retried.version_id, failed.version_id);
   assert.equal(retried.prompt_content, 'Original prompt');
   assert.equal(retried.model_id, failed.model_id);
-  assert.deepEqual(retried.config, failed.config);
+  assert.deepEqual(retried.config, { ...failed.config, systemPrompt: 'Changed', temperature: 1.2,
+    maxTokens: 262144, timeoutSeconds: 600, previewMinWidth: 1600, previewMinHeight: 1000 });
   assert.equal(retried.status, 'queued');
   for (const key of ['started_at', 'finished_at', 'raw', 'html', 'error', 'metrics']) assert.equal(retried[key], null);
   assert.deepEqual(store.run(id), failed);
@@ -235,6 +237,7 @@ test('bulk retries are atomic, deduplicate selections, and retain each original 
   const originals = batches.map(batch => batch.ids[0]);
   originals.slice(0, 2).forEach(id => store.updateRun(id, { status: 'failed' }));
   const post = ids => workspace.fetch(request('/api/runs/retry', { ids }));
+  store.saveSettings({ maxTokens: 524288, temperature: 0.4 });
   assert.equal((await post(originals)).status, 409);
   assert.equal((await post([originals[0], 'missing'])).status, 404);
   assert.equal((await post([])).status, 400);
@@ -246,7 +249,7 @@ test('bulk retries are atomic, deduplicate selections, and retain each original 
   ids.forEach((id, index) => {
     assert.equal(store.run(id).batch_id, batches[index].batchId);
     assert.equal(store.run(id).status, 'queued');
-    assert.deepEqual(store.run(id).config, store.run(originals[index]).config);
+    assert.deepEqual(store.run(id).config, { ...store.run(originals[index]).config, maxTokens: 524288, temperature: 0.4 });
   });
 });
 

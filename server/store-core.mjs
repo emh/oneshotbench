@@ -125,6 +125,17 @@ export class StoreCore {
   archivePrompt(id, archived) {
     return this.db.prepare('UPDATE prompts SET archived=? WHERE id=?').run(archived ? 1 : 0, id);
   }
+  generationConfig(settings = this.settings()) {
+    return {
+      temperature: settings.temperature,
+      maxTokens: settings.maxTokens,
+      timeoutSeconds: settings.timeoutSeconds,
+      systemPrompt: settings.systemPrompt,
+      previewMinWidth: settings.minWidth,
+      previewMinHeight: settings.minHeight,
+      harnessVersion: HARNESS_VERSION,
+    };
+  }
   enqueue(promptIds, modelIds, overrides = {}, promptVersions = {}) {
     const choices = variants(modelIds);
     if (promptIds.length * choices.length > 200)
@@ -151,16 +162,7 @@ export class StoreCore {
         throw Object.assign(new Error('Choose available prompts and enabled models.'), {
           status: 400,
         });
-      const config = {
-        temperature: settings.temperature,
-        maxTokens: settings.maxTokens,
-        timeoutSeconds: settings.timeoutSeconds,
-        systemPrompt: settings.systemPrompt,
-        previewMinWidth: settings.minWidth,
-        previewMinHeight: settings.minHeight,
-        harnessVersion: HARNESS_VERSION,
-        ...overrides,
-      };
+      const config = { ...this.generationConfig(settings), ...overrides };
       const ids = [];
       for (const p of prompts) {
         this.db
@@ -197,11 +199,13 @@ export class StoreCore {
       const runs = [...new Set(ids)].map(id => this.run(id));
       if (runs.some(run => !run)) throw Object.assign(new Error('Run not found'), { status: 404 });
       if (runs.some(run => run.status !== 'failed')) throw Object.assign(new Error('Only failed runs can be retried.'), { status: 409 });
+      const config = this.generationConfig();
       return { ids: runs.map(run => {
         const retryId = crypto.randomUUID();
         this.db.prepare('INSERT INTO runs (id,batch_id,version_id,model_id,model_name,created_at,status,config) VALUES (?,?,?,?,?,?,?,?)')
           .run(retryId, run.batch_id, run.version_id, run.model_id, run.model_name,
-            new Date().toISOString(), 'queued', JSON.stringify(run.config));
+            new Date().toISOString(), 'queued', JSON.stringify({ ...config,
+              ...(run.config.reasoningEffort !== undefined ? { reasoningEffort: run.config.reasoningEffort } : {}) }));
         return retryId;
       }) };
     });
