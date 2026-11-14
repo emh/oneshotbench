@@ -51,6 +51,8 @@ Hover, focus, or click a prompt name in a gallery batch header or comparison tit
 
 Every request includes configurable system instructions asking for one complete, standalone HTML file with inline CSS/JS, embedded visuals, and no external dependencies or network access. The harness extracts raw HTML or fenced HTML. Incomplete, truncated, or non-HTML responses remain inspectable as failed runs. It does not repair outputs, rerun the model, or judge visual quality automatically.
 
+System instructions are sent exactly as saved in Settings. Preview dimensions control the viewer only; they are not appended to model instructions. Put any required layout dimensions in the prompt itself.
+
 Previews use `sandbox="allow-scripts"` without `allow-same-origin`. A restrictive Content Security Policy blocks external scripts, fetches, frames, forms, and external assets. Browser storage, popups, top navigation, and downloads are unavailable. Inline JavaScript and data-URL images work. A direct HTML endpoint also enforces the sandbox through response headers. These browser boundaries protect the host app; expensive or looping generated JavaScript can still consume browser resources.
 
 Comparison iframes are at least **1200×900 CSS pixels** by default, configurable in Settings. That minimum applies to the iframe itself, excluding the tile header. Tiles expand to fill the screen; the canvas scrolls when the grid does not fit. Gallery thumbnails are scaled previews, while the comparison canvas renders at actual size. Display scaling can make a 5K screen expose fewer CSS pixels than physical pixels.

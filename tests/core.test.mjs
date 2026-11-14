@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { Store } from '../server/store.mjs';
 import { Runner } from '../server/runner.mjs';
 import { createApp } from '../server/app.mjs';
-import { extractHtml, safeDocument } from '../server/format.mjs';
+import { extractHtml, safeDocument, OUTPUT_INSTRUCTIONS } from '../server/format.mjs';
 
 const models = [
   {
@@ -99,6 +99,22 @@ test('drafts edit in place; run submission freezes versions and configuration', 
     baseVersionId: version2.version_id,
   });
   assert.equal(noChange.version, 2);
+  store.close();
+});
+test('preview dimensions do not alter system instructions or historical run snapshots', () => {
+  const { store, prompt } = fixture();
+  assert.doesNotMatch(OUTPUT_INSTRUCTIONS, /1200|900|viewport/i);
+  const instructions = 'Return standalone HTML.\nKeep the design responsive.';
+  store.saveSettings({ systemPrompt: instructions, minWidth: 1600, minHeight: 1000 });
+  const first = store.enqueue([prompt.id], [models[0].id]);
+  assert.equal(store.run(first.ids[0]).config.systemPrompt, instructions);
+  store.saveSettings({ minWidth: 2000, minHeight: 1400 });
+  const second = store.enqueue([prompt.id], [models[0].id]);
+  assert.equal(store.run(second.ids[0]).config.systemPrompt, instructions);
+  assert.equal(store.run(first.ids[0]).config.previewMinWidth, 1600);
+  assert.equal(store.run(second.ids[0]).config.previewMinWidth, 2000);
+  store.saveSettings({ systemPrompt: 'New instructions' });
+  assert.equal(store.run(first.ids[0]).config.systemPrompt, instructions);
   store.close();
 });
 test('explicit versions rerun historical prompts and defaults still select latest', () => {

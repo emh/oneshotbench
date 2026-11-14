@@ -158,7 +158,7 @@ export class StoreCore {
         temperature: settings.temperature,
         maxTokens: settings.maxTokens,
         timeoutSeconds: settings.timeoutSeconds,
-        systemPrompt: `${settings.systemPrompt}\n\nThe configured minimum preview viewport is ${settings.minWidth} by ${settings.minHeight} CSS pixels.`,
+        systemPrompt: settings.systemPrompt,
         previewMinWidth: settings.minWidth,
         previewMinHeight: settings.minHeight,
         harnessVersion: HARNESS_VERSION,
