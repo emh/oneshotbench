@@ -24,6 +24,56 @@ let data,
   prompt = '',
   model = '',
   effort = '';
+let promptTrigger, promptCloseTimer;
+const promptPopup = h('div', { id: 'prompt-popup', class: 'prompt-popup', role: 'tooltip', hidden: true,
+  onPointerenter: () => clearTimeout(promptCloseTimer),
+  onPointerleave: () => schedulePromptClose(),
+});
+document.body.append(promptPopup);
+function closePrompt() {
+  clearTimeout(promptCloseTimer);
+  promptTrigger?.removeAttribute('aria-describedby');
+  promptTrigger = null;
+  promptPopup.hidden = true;
+}
+function schedulePromptClose() {
+  clearTimeout(promptCloseTimer);
+  promptCloseTimer = setTimeout(closePrompt, 180);
+}
+function promptVersions(runs) {
+  return [...new Map(runs.map(r => [r.version_id || r.prompt_id + ':' + r.version, r])).values()];
+}
+function promptLabel(label, runs) {
+  const trigger = h('button', { type: 'button', class: 'prompt-label',
+    onPointerenter: event => { if (event.pointerType !== 'touch') show(); },
+    onPointerleave: schedulePromptClose,
+    onFocus: () => show(), onBlur: schedulePromptClose, onClick: () => show(),
+  }, label);
+  function show() {
+    closePrompt();
+    promptTrigger = trigger;
+    trigger.setAttribute('aria-describedby', promptPopup.id);
+    promptPopup.replaceChildren(...promptVersions(runs).map(run => h('section', {},
+      h('h3', {}, run.prompt_title + ' · v' + run.version),
+      h('pre', {}, run.prompt_content))));
+    promptPopup.hidden = false;
+    promptPopup.scrollTop = 0;
+    const anchor = trigger.getBoundingClientRect(), box = promptPopup.getBoundingClientRect();
+    const left = Math.max(12, Math.min(anchor.left, window.innerWidth - box.width - 12));
+    const top = anchor.bottom + 8 + box.height <= window.innerHeight - 12
+      ? anchor.bottom + 8 : Math.max(12, anchor.top - box.height - 8);
+    Object.assign(promptPopup.style, { left: left + 'px', top: top + 'px' });
+  }
+  return trigger;
+}
+document.addEventListener('keydown', event => { if (event.key === 'Escape') closePrompt(); });
+document.addEventListener('pointerdown', event => {
+  if (!promptPopup.contains(event.target) && !promptTrigger?.contains(event.target)) closePrompt();
+});
+window.addEventListener('resize', closePrompt);
+document.addEventListener('scroll', event => {
+  if (!promptPopup.contains(event.target)) closePrompt();
+}, true);
 function readURL() {
   compare = [
     ...new Set(
@@ -103,8 +153,7 @@ function syncGallery() {
     }
     batch.runs = runs;
     batch.createdAt = runs.reduce((first, r) => r.created_at < first ? r.created_at : first, runs[0].created_at);
-    const prompts = [...new Map(runs.map(r => [r.version_id || r.prompt_id + ':' + r.version,
-      r.prompt_title + ' · v' + r.version])).values()];
+    const prompts = promptVersions(runs);
     const models = [...new Map(runs.map(r => [r.model_id + ':' + (r.config?.reasoningEffort || 'default'), runModelName(r)])).values()];
     batch.heading.replaceChildren(
       h('div', { class: 'section-heading' },
@@ -112,7 +161,8 @@ function syncGallery() {
           { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }))),
         h('code', {}, id.slice(0, 8))),
       h('dl', { class: 'batch-summary' },
-        h('dt', {}, 'Prompts'), h('dd', {}, prompts.join(' / ')),
+        h('dt', {}, 'Prompts'), h('dd', {}, prompts.map((r, index) =>
+          [index ? ' / ' : '', promptLabel(r.prompt_title + ' · v' + r.version, [r])])),
         h('dt', {}, 'Models'), h('dd', {}, models.join(' / '))));
     batch.count = badge('');
     batch.heading.querySelector('.section-heading').append(batch.count);
@@ -189,6 +239,7 @@ function updateGallery() {
   galleryControls.compareButton.disabled = selected.size < 2;
 }
 function render() {
+  closePrompt();
   if (!data) return;
   if (!galleryView?.isConnected) syncGallery();
   galleryView.hidden = !!compare.length;
@@ -197,6 +248,7 @@ function render() {
   else { comparisonHost.replaceChildren(); updateGallery(); }
 }
 function comparison() {
+  closePrompt();
   const runs = compare.map((id) => data.runs.find((r) => r.id === id));
   if (runs.some((r) => !r) || new Set(runs.map((r) => r.prompt_id)).size > 1) {
     comparisonHost.replaceChildren(
@@ -226,7 +278,7 @@ function comparison() {
     'header',
     { class: 'comparison-toolbar' },
     button('←', () => open([]), 'icon', { 'aria-label': 'Back to gallery' }),
-    h('strong', {}, runs[0].prompt_title),
+    h('strong', {}, promptLabel(runs[0].prompt_title, runs)),
     badge(runs.length + ' results'),
     h(
       'div',
