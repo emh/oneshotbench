@@ -6,7 +6,6 @@ import {
   name,
   runModelName,
   reasoningFilterOptions,
-  runEffort,
   money,
   tokens,
   tokenUsage,
@@ -16,6 +15,7 @@ import {
   errorBox,
   preview,
 } from '../shared/dom.js';
+import { readGalleryURL, galleryURL, matchesRun, plotData } from '../shared/gallery.js';
 const root = document.getElementById('root');
 let data,
   selected = new Set(),
@@ -23,7 +23,8 @@ let data,
   columns = null,
   prompt = '',
   model = '',
-  effort = '';
+  effort = '', version = '', batch = '', status = '', view = 'gallery', metric = 'total';
+let gallerySynced = false;
 let promptTrigger, promptCloseTimer;
 const promptPopup = h('div', { id: 'prompt-popup', class: 'prompt-popup', role: 'tooltip', hidden: true,
   onPointerenter: () => clearTimeout(promptCloseTimer),
@@ -74,19 +75,33 @@ window.addEventListener('resize', closePrompt);
 document.addEventListener('scroll', event => {
   if (!promptPopup.contains(event.target)) closePrompt();
 }, true);
+function routeState() { return { compare, columns, prompt, model, effort, version, batch, status, view, metric }; }
 function readURL() {
-  compare = [
-    ...new Set(
-      (new URLSearchParams(location.search).get('compare') || '').split(',').filter(Boolean),
-    ),
-  ].slice(0, 9);
+  ({ compare, columns, prompt, model, effort, version, batch, status, view, metric } = readGalleryURL(location.search));
 }
-function open(ids) {
-  compare = ids;
-  const url = new URL(location.href);
-  ids.length ? url.searchParams.set('compare', ids.join(',')) : url.searchParams.delete('compare');
+function urlFor(patch = {}) { return galleryURL(location.href, { ...routeState(), ...patch }).href; }
+function runURL(id) { return galleryURL(location.href, { compare: [id] }).href; }
+function navigate(url) {
   history.pushState({}, '', url);
+  readURL();
   render();
+}
+function pageLink(label, href, className = '') {
+  return h('a', { href, class: className, onClick: event => {
+    if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault(); navigate(href);
+  } }, label);
+}
+function changeFilter(key, value) {
+  navigate(urlFor({ [key]: value, ...(key === 'prompt' ? { version: '' } : {}) }));
+}
+function open(ids) { navigate(urlFor({ compare: ids })); }
+function navigation() {
+  return h('header', { class: 'gallery-header' },
+    pageLink('⌘ ONESHOT', galleryURL(location.href, {}).href, 'brand'),
+    h('nav', { class: 'gallery-nav', 'aria-label': 'Gallery navigation' },
+      [['gallery', 'Results'], ['prompts', 'Prompts'], ['scatter', 'Cost & tokens']].map(([id, label]) =>
+        pageLink(label, urlFor({ view: id, compare: [], ...(id === 'gallery' ? { status: '' } : {}) }), view === id ? 'active' : ''))));
 }
 window.addEventListener('popstate', () => {
   readURL();
@@ -99,14 +114,14 @@ async function load() {
     const response = await fetch(exported ? new URL('data.json', location.href) : endpoint + '/api/gallery');
     if (!response.ok) throw Error('Gallery unavailable');
     data = await response.json();
-    syncGallery();
+    gallerySynced = false;
     render();
   } catch (e) {
     (galleryView?.isConnected ? galleryControls.notice : root).replaceChildren(errorBox(e.message), button('Retry', load));
   }
 }
 // Keep cards mounted: removing or reparenting an iframe resets its document.
-let galleryView, comparisonHost, galleryControls;
+let galleryView, comparisonHost, galleryControls, pageHost;
 const cards = new Map(), batches = new Map();
 function mountGallery() {
   const resultCount = badge(''), batchList = h('div', { class: 'gallery-batches' });
@@ -115,20 +130,22 @@ function mountGallery() {
   const compareButton = button('Compare →', () => open([...selected]), 'primary');
   const selectionBar = h('div', { class: 'selection', hidden: true }, selectionCount,
     button('Clear', () => { selected.clear(); updateGallery(); }), compareButton);
-  const promptFilter = select('Filter gallery by prompt', [], prompt, v => { prompt = v; updateGallery(); });
-  const modelFilter = select('Filter gallery by model', [], model, v => { model = v; updateGallery(); });
-  const effortFilter = select('Filter gallery by reasoning level', reasoningFilterOptions, effort, v => { effort = v; updateGallery(); });
+  const promptFilter = select('Filter gallery by prompt', [], prompt, v => changeFilter('prompt', v));
+  const modelFilter = select('Filter gallery by model', [], model, v => changeFilter('model', v));
+  const effortFilter = select('Filter gallery by reasoning level', reasoningFilterOptions, effort, v => changeFilter('effort', v));
+  const versionFilter = select('Filter gallery by prompt version', [], version, v => changeFilter('version', v));
+  const batchFilter = select('Filter gallery by batch', [], batch, v => changeFilter('batch', v));
   const notice = h('div', { role: 'status' });
   galleryView = h('div', { class: 'gallery-app' },
-    h('header', { class: 'gallery-header' },
-      h('a', { href: './', class: 'brand' }, h('span', { class: 'brand-mark' }, '⌘'), 'ONESHOT')),
+    navigation(),
     h('main', { class: 'gallery-content' },
-      h('div', { class: 'toolbar standalone gallery-filters' }, promptFilter, modelFilter, effortFilter, resultCount),
+      h('div', { class: 'toolbar standalone gallery-filters' }, promptFilter, modelFilter, effortFilter, versionFilter, batchFilter, resultCount),
       notice, batchList, noResults, selectionBar));
   comparisonHost = h('div', { hidden: true });
   galleryControls = { resultCount, batchList, noResults, selectionCount, selectionBar,
-    compareButton, promptFilter, modelFilter, notice };
-  root.replaceChildren(galleryView, comparisonHost);
+    compareButton, promptFilter, modelFilter, effortFilter, versionFilter, batchFilter, notice };
+  pageHost = h('div', { hidden: true });
+  root.replaceChildren(galleryView, comparisonHost, pageHost);
 }
 function syncGallery() {
   if (!galleryView?.isConnected) mountGallery();
@@ -180,7 +197,7 @@ function syncGallery() {
             h('div', { class: 'section-heading' }, modelName,
               h('label', { class: 'inline-check' }, checkbox, 'Compare')),
             h('div', { class: 'gallery-token-usage' }, usage),
-            h('footer', {}, timing, cost)));
+            h('footer', {}, timing, cost, pageLink('Permalink ↗', runURL(r.id), 'run-permalink'))));
         entry = { card, checkbox, previewButton, title, version, modelName, timing, cost, usage };
         cards.set(r.id, entry);
         batch.grid.append(card);
@@ -203,22 +220,17 @@ function syncGallery() {
       frame.style.height = data.settings.minHeight + 'px';
     }
   }
-  function options(control, values, current) {
-    control.replaceChildren(...values.map(([value, label]) => h('option', { value }, label)));
-    control.value = current;
-  }
-  options(galleryControls.promptFilter, [['', 'All prompts'], ...new Map(data.runs.map(r => [r.prompt_id, r.prompt_title]))], prompt);
-  options(galleryControls.modelFilter, [['', 'All models'], ...new Map(data.runs.map(r => [r.model_id, name(r.model_name)]))], model);
+  gallerySynced = true;
   galleryControls.notice.replaceChildren();
   updateGallery();
 }
 function updateGallery() {
+  syncFilterControls();
   const first = data.runs.find(r => selected.has(r.id));
   let visible = 0;
   for (const entry of cards.values()) {
     const r = entry.run;
-    const matches = (!prompt || r.prompt_id === prompt) && (!model || r.model_id === model) &&
-      (!effort || runEffort(r) === effort);
+    const matches = matchesRun(r, { prompt, model, effort, version, batch });
     entry.card.hidden = !matches;
     if (matches) visible++;
     entry.card.classList.toggle('selected', selected.has(r.id));
@@ -238,18 +250,167 @@ function updateGallery() {
   galleryControls.selectionCount.textContent = selected.size + '/9 selected';
   galleryControls.compareButton.disabled = selected.size < 2;
 }
+function analytics() { return data.analytics || data.runs; }
+function promptIndex() {
+  if (data.prompts) return data.prompts;
+  const groups = new Map();
+  for (const run of data.runs) {
+    if (!groups.has(run.prompt_id)) groups.set(run.prompt_id, []);
+    groups.get(run.prompt_id).push(run);
+  }
+  return [...groups].map(([id, runs]) => {
+    const versions = promptVersions(runs).sort((a, b) => b.version - a.version)
+      .map(r => ({ id: r.version_id, version: r.version, title: r.prompt_title, content: r.prompt_content }));
+    return { id, title: versions[0].title, versions };
+  });
+}
+function withPrompt(run) {
+  if (run.prompt_content !== undefined) return run;
+  const version = promptIndex().find(p => p.id === run.prompt_id)?.versions.find(v => v.id === run.version_id || v.version === run.version);
+  return { ...run, prompt_content: version?.content || 'Prompt text unavailable.' };
+}
+function filterOptions(key) {
+  const runs = analytics();
+  if (key === 'prompt') return [['', 'All prompts'], ...promptIndex().map(p => [p.id, p.title])];
+  if (key === 'model') return [['', 'All models'], ...new Map(runs.map(r => [r.model_id, name(r.model_name)]))];
+  if (key === 'effort') return reasoningFilterOptions;
+  if (key === 'version') return [['', 'All versions'], ...[...new Set(runs.filter(r => !prompt || r.prompt_id === prompt).map(r => r.version))]
+    .sort((a, b) => b - a).map(v => [String(v), 'v' + v])];
+  if (key === 'status') return [['', 'All statuses'], ...['completed', 'failed', 'queued', 'running', 'cancelled', 'interrupted'].map(s => [s, s])];
+  const groups = new Map();
+  for (const run of runs) if (run.batch_id && (!groups.has(run.batch_id) || groups.get(run.batch_id) > run.created_at)) groups.set(run.batch_id, run.created_at);
+  return [['', 'All batches'], ...[...groups].sort((a, b) => b[1].localeCompare(a[1])).map(([id, date]) =>
+    [id, new Date(date).toLocaleString() + ' · ' + id.slice(0, 8)])];
+}
+function filterSelect(label, key) {
+  const value = routeState()[key], choices = filterOptions(key);
+  if (value && !choices.some(([id]) => id === value)) choices.push([value, 'Unavailable · ' + value]);
+  return select(label, choices, value, next => changeFilter(key, next));
+}
+function syncFilterControls() {
+  for (const key of ['prompt', 'model', 'effort', 'version', 'batch']) {
+    const control = galleryControls[key + 'Filter'], value = routeState()[key], choices = filterOptions(key);
+    if (value && !choices.some(([id]) => id === value)) choices.push([value, 'Unavailable · ' + value]);
+    control.replaceChildren(...choices.map(([id, label]) => h('option', { value: id }, label)));
+    control.value = value;
+  }
+}
+function renderPromptIndex() {
+  const prompts = promptIndex();
+  pageHost.replaceChildren(navigation(), h('main', { class: 'gallery-content' },
+    h('div', { class: 'section-heading' }, h('h1', {}, 'Prompts'), badge(prompts.length + ' prompts')),
+    prompts.length ? h('div', { class: 'public-prompts' }, prompts.map(p => {
+      const versions = [...p.versions].sort((a, b) => b.version - a.version), latest = versions[0];
+      const runs = data.runs.filter(r => r.prompt_id === p.id);
+      const resultsURL = v => galleryURL(location.href, { prompt: p.id, ...(v ? { version: String(v) } : {}) }).href;
+      const versionContent = v => h('section', { class: 'public-prompt-version' },
+        h('div', { class: 'section-heading' }, h('h3', {}, v.title + ' · v' + v.version),
+          pageLink('View results (' + runs.filter(r => r.version === v.version).length + ')', resultsURL(v.version))),
+        h('pre', {}, v.content));
+      return h('article', { class: 'panel public-prompt', 'data-prompt-id': p.id },
+        h('div', { class: 'section-heading' }, h('h2', {}, pageLink(p.title, resultsURL())),
+          h('div', { class: 'actions' }, p.archived ? badge('archived') : null, badge(runs.length + ' results'))),
+        latest ? versionContent(latest) : null,
+        versions.length > 1 ? h('details', {}, h('summary', {}, 'Previous versions (' + (versions.length - 1) + ')'), versions.slice(1).map(versionContent)) : null);
+    })) : empty('No prompts')));
+}
+function svgElement(tag, attrs = {}, ...children) {
+  const node = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
+  for (const child of children.flat(Infinity)) node.append(typeof child === 'string' ? document.createTextNode(child) : child);
+  return node;
+}
+function renderScatter() {
+  const { points, missing } = plotData(analytics(), routeState(), metric);
+  const metricNames = { total: 'Total tokens', input: 'Input tokens', output: 'Output tokens', reasoning: 'Reasoning tokens' };
+  const countLabel = points.length + ' plotted' + (missing ? ' · ' + missing + ' missing cost/tokens' : '');
+  const controls = h('div', { class: 'toolbar standalone' },
+    filterSelect('Filter chart by prompt', 'prompt'), filterSelect('Filter chart by model', 'model'),
+    filterSelect('Filter chart by reasoning level', 'effort'), filterSelect('Filter chart by prompt version', 'version'),
+    filterSelect('Filter chart by batch', 'batch'), filterSelect('Filter chart by status', 'status'),
+    select('Token metric', Object.entries(metricNames), metric, next => navigate(urlFor({ metric: next }))), badge(countLabel));
+  const content = h('main', { class: 'gallery-content scatter-content' },
+    h('h1', {}, 'Cost & tokens'), controls);
+  pageHost.replaceChildren(navigation(), content);
+  if (!points.length) { content.append(empty('No runs with recorded cost and token usage match these filters.')); return; }
+  const modelIDs = [...new Set(analytics().map(r => r.model_id))].sort();
+  const color = id => `hsl(${(modelIDs.indexOf(id) * 137.5 + 210) % 360} 65% 72%)`;
+  const width = 1100, height = 560, left = 85, right = 30, top = 24, bottom = 65;
+  const maxTokens = points.reduce((max, p) => Math.max(max, p.tokens), 1) * 1.05;
+  const maxCost = points.reduce((max, p) => Math.max(max, p.cost), 0.000001) * 1.05;
+  const x = value => left + value / maxTokens * (width - left - right);
+  const y = value => height - bottom - value / maxCost * (height - top - bottom);
+  const svg = svgElement('svg', { viewBox: `0 0 ${width} ${height}`, class: 'scatterplot', role: 'group',
+    'aria-label': 'Recorded cost in USD versus ' + metricNames[metric].toLowerCase() });
+  const tickTokens = n => new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 }).format(n);
+  const tickCost = n => '$' + new Intl.NumberFormat(undefined, { maximumSignificantDigits: 3 }).format(n);
+  for (let i = 0; i <= 5; i++) {
+    const tx = maxTokens * i / 5, cy = maxCost * i / 5;
+    svg.append(svgElement('line', { x1: x(tx), x2: x(tx), y1: top, y2: height - bottom, class: 'plot-grid' }),
+      svgElement('line', { x1: left, x2: width - right, y1: y(cy), y2: y(cy), class: 'plot-grid' }),
+      svgElement('text', { x: x(tx), y: height - bottom + 24, 'text-anchor': 'middle' }, tickTokens(tx)),
+      svgElement('text', { x: left - 12, y: y(cy) + 4, 'text-anchor': 'end' }, tickCost(cy)));
+  }
+  svg.append(svgElement('text', { x: width / 2, y: height - 12, 'text-anchor': 'middle', class: 'plot-axis' }, metricNames[metric]),
+    svgElement('text', { x: 18, y: height / 2, 'text-anchor': 'middle', transform: `rotate(-90 18 ${height / 2})`, class: 'plot-axis' }, 'Cost (USD)'));
+  const detail = h('div', { class: 'plot-detail', 'aria-live': 'polite' });
+  const pointSelect = select('Inspect run', points.map(({ run }) => [run.id,
+    runModelName(run) + ' · ' + run.prompt_title + ' · v' + run.version + ' · ' + run.id.slice(0, 8)]), points[0].run.id,
+    id => showPoint(points.find(p => p.run.id === id)));
+  function showPoint(point) {
+    const { run, tokens: used, cost } = point;
+    pointSelect.value = run.id;
+    svg.querySelectorAll('.plot-point').forEach(node => node.classList.toggle('inspected', node.dataset.runId === run.id));
+    detail.replaceChildren(
+      h('div', { class: 'section-heading' }, h('strong', {}, runModelName(run)), badge(run.status, run.status)),
+      h('div', {}, promptLabel(run.prompt_title + ' · v' + run.version, [withPrompt(run)])),
+      h('div', { class: 'actions' }, h('code', {}, '$' + cost), h('code', {}, used.toLocaleString() + ' ' + metricNames[metric].toLowerCase())),
+      tokens(run.metrics),
+      h('div', { class: 'actions' }, h('code', {}, new Date(run.created_at).toLocaleString()), pageLink('Open run ↗', runURL(run.id))));
+  }
+  for (const point of points) {
+    const r = point.run, label = runModelName(r) + ' · ' + r.prompt_title + ' · v' + r.version + ' · ' +
+      point.tokens.toLocaleString() + ' tokens · ' + tickCost(point.cost) + ' · ' + r.status + ' · ' + r.id;
+    const link = svgElement('a', { href: runURL(r.id), 'aria-label': label },
+      svgElement('circle', { cx: x(point.tokens), cy: y(point.cost), r: 6, fill: color(r.model_id),
+        class: 'plot-point', 'data-run-id': r.id }, svgElement('title', {}, label)));
+    link.addEventListener('pointerenter', () => showPoint(point));
+    link.addEventListener('focus', () => showPoint(point));
+    link.addEventListener('click', event => {
+      if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault(); navigate(runURL(r.id));
+    });
+    svg.append(link);
+  }
+  const legend = h('div', { class: 'plot-legend' }, [...new Map(points.map(p => [p.run.model_id, name(p.run.model_name)]))].map(([id, label]) =>
+    h('span', {}, h('i', { style: { background: color(id) } }), label)));
+  content.append(h('div', { class: 'panel plot-panel' }, svg, legend),
+    h('section', { class: 'panel plot-inspector' }, pointSelect, detail));
+  showPoint(points[0]);
+}
 function render() {
   closePrompt();
   if (!data) return;
-  if (!galleryView?.isConnected) syncGallery();
-  galleryView.hidden = !!compare.length;
+  if (!galleryView?.isConnected) mountGallery();
+  galleryView.querySelector('.gallery-header').replaceWith(navigation());
+  galleryView.hidden = !!compare.length || view !== 'gallery';
   comparisonHost.hidden = !compare.length;
+  pageHost.hidden = !!compare.length || view === 'gallery';
   if (compare.length) comparison();
-  else { comparisonHost.replaceChildren(); updateGallery(); }
+  else {
+    comparisonHost.replaceChildren();
+    if (view === 'prompts') renderPromptIndex();
+    else if (view === 'scatter') renderScatter();
+    else {
+      pageHost.replaceChildren();
+      if (!gallerySynced) syncGallery();
+      else updateGallery();
+    }
+  }
 }
 function comparison() {
   closePrompt();
-  const runs = compare.map((id) => data.runs.find((r) => r.id === id));
+  const runs = compare.map(id => data.runs.find(r => r.id === id) || analytics().find(r => r.id === id));
   if (runs.some((r) => !r) || new Set(runs.map((r) => r.prompt_id)).size > 1) {
     comparisonHost.replaceChildren(
       errorBox('Unavailable results or different prompts'),
@@ -278,7 +439,7 @@ function comparison() {
     'header',
     { class: 'comparison-toolbar' },
     button('←', () => open([]), 'icon', { 'aria-label': 'Back to gallery' }),
-    h('strong', {}, promptLabel(runs[0].prompt_title, runs)),
+    h('strong', {}, promptLabel(runs[0].prompt_title, runs.map(withPrompt))),
     badge(runs.length + ' results'),
     h(
       'div',
@@ -289,8 +450,7 @@ function comparison() {
         Array.from({ length: runs.length }, (_, i) => [i + 1, i + 1 + ' columns']),
         cols,
         (v) => {
-          columns = Number(v);
-          comparison();
+          navigate(urlFor({ columns: Number(v) }));
         },
       ),
       runs.length < 9
@@ -336,12 +496,11 @@ function comparison() {
           'header',
           { class: 'tile-heading' },
           h('code', {}, String(i + 1).padStart(2, '0')),
-          h('span', { class: 'tile-result', title: runModelName(r) + ' · v' + r.version + ' · ' + r.id },
-            runModelName(r) + ' · v' + r.version + ' · ' + r.id.slice(0, 6)),
+          pageLink(runModelName(r) + ' · v' + r.version + ' · ' + r.id.slice(0, 6), runURL(r.id), 'tile-result'),
           h('code', {}, duration(r)),
           tokens(r.metrics),
           h('code', {}, money(r.metrics?.cost)),
-          button(
+          r.html ? button(
             '</>',
             () =>
               modal(
@@ -357,14 +516,15 @@ function comparison() {
               ),
             'icon',
             { 'aria-label': 'View source ' + r.id },
-          ),
+          ) : badge(r.status, r.status),
           runs.length > 1
             ? button('×', () => open(compare.filter((id) => id !== r.id)), 'icon', {
                 'aria-label': 'Remove ' + r.id,
               })
             : null,
         ),
-        preview(r.html, r.prompt_title + ' · ' + runModelName(r)),
+        r.html ? preview(r.html, r.prompt_title + ' · ' + runModelName(r)) :
+          empty(r.status + ' · No completed implementation'),
       ),
     );
   comparisonHost.replaceChildren(
