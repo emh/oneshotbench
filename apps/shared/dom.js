@@ -33,6 +33,9 @@ export const name = (s) =>
   s.replace(/^(OpenAI|Anthropic|Google|Meta|DeepSeek|Qwen|Mistral|xAI):\s*/i, '');
 export const runModelName = run => name(run.model_name) +
   (run.config?.reasoningEffort !== undefined ? ' · ' + run.config.reasoningEffort : '');
+export const reasoningFilterOptions = [['', 'All reasoning levels'], ['default', 'Default'],
+  ...['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].map(effort => [effort, effort])];
+export const runEffort = run => run.config?.reasoningEffort ?? 'default';
 export const money = (n) =>
   n == null ? '—' : n === 0 ? '$0.00' : '$' + n.toFixed(n < 0.01 ? 4 : 3);
 export function tokenUsage(metrics = {}) {

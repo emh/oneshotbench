@@ -35,7 +35,8 @@ const versioned = store.prompts()[0];
 store.editPrompt(versioned.id, { title: versioned.title, category: 'Versioned fixture',
   content: 'Version 2: Add keyboard shortcuts and a compact layout.\nKeep all data local.',
   baseVersionId: versioned.version_id });
-const secondBatch = store.enqueue([store.prompts()[0].id, store.prompts()[1].id], models.slice(0, 2).map(m => m.id));
+const secondBatch = store.enqueue([store.prompts()[0].id, store.prompts()[1].id],
+  ['medium', 'high'].map(reasoningEffort => ({ modelId: models[0].id, reasoningEffort })));
 for (const id of secondBatch.ids) {
   const run = store.run(id);
   store.updateRun(id, { status: 'completed', html: output(run.model_name), raw: output(run.model_name),

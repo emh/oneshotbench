@@ -8,6 +8,8 @@ import {
   badge,
   name,
   runModelName,
+  reasoningFilterOptions,
+  runEffort,
   money,
   tokens,
   duration,
@@ -27,7 +29,7 @@ let state,
   catalogError = '',
   catalogBusy = false;
 const filters = {
-  runs: { search: '', model: '', prompt: '', status: '', sort: 'newest' },
+  runs: { search: '', model: '', prompt: '', effort: '', status: '', sort: 'newest' },
   prompts: { search: '' },
   models: { search: '', provider: '', enabled: false },
 };
@@ -146,6 +148,7 @@ function renderRuns(container) {
       (r) =>
         (!f.model || r.model_id === f.model) &&
         (!f.prompt || r.prompt_id === f.prompt) &&
+        (!f.effort || runEffort(r) === f.effort) &&
         (!f.status || r.status === f.status) &&
         (r.prompt_title + ' ' + runModelName(r) + ' ' + r.id)
           .toLowerCase()
@@ -190,6 +193,7 @@ function renderRuns(container) {
         f.status,
         (v) => change('status', v),
       ),
+      select('Filter by reasoning level', reasoningFilterOptions, f.effort, v => change('effort', v)),
       select(
         'Sort by date',
         [
@@ -342,6 +346,17 @@ function newRun(initialPromptId, initialVersionId) {
   function update() {
     const n = promptIds.size * [...modelIds].reduce((sum, id) => sum + efforts.get(id).size, 0);
     modelArea.querySelectorAll('fieldset').forEach(node => { node.disabled = !modelIds.has(node.dataset.modelId); });
+    for (const [control, ids, total] of [[allPrompts, promptIds, state.prompts.length], [allModels, modelIds, enabledModels.length]]) {
+      control.checked = total > 0 && ids.size === total;
+      control.indeterminate = ids.size > 0 && ids.size < total;
+      control.disabled = !total;
+    }
+    grid.querySelectorAll('[data-choice-id]').forEach(node => {
+      node.checked = (node.dataset.selection === 'models' ? modelIds : promptIds).has(node.dataset.choiceId);
+    });
+    modelArea.querySelectorAll('[data-effort]').forEach(node => {
+      node.checked = efforts.get(node.closest('fieldset').dataset.modelId).has(node.dataset.effort);
+    });
     summary.textContent = n + ' implementations';
     submit.disabled = submitting || !capabilitiesLoaded || !n || n > 200 || !state.keyConfigured || [...modelIds].some(id => !efforts.get(id).size);
   }
@@ -351,6 +366,8 @@ function newRun(initialPromptId, initialVersionId) {
       { class: 'choice' },
       h('input', {
         type: 'checkbox',
+        'data-choice-id': id,
+        'data-selection': set === modelIds ? 'models' : 'prompts',
         checked: set.has(id),
         onChange: (e) => {
           e.target.checked ? set.add(id) : set.delete(id);
@@ -360,6 +377,19 @@ function newRun(initialPromptId, initialVersionId) {
       h('span', {}, label, h('small', {}, meta)),
     );
   }
+  const allPrompts = h('input', { type: 'checkbox', 'aria-label': 'Select all prompts', onChange: event => {
+    promptIds.clear();
+    if (event.target.checked) state.prompts.forEach(p => promptIds.add(p.id));
+    update();
+  } });
+  const allModels = h('input', { type: 'checkbox', 'aria-label': 'Select all models', onChange: event => {
+    modelIds.clear();
+    if (event.target.checked) enabledModels.forEach(m => {
+      modelIds.add(m.id);
+      efforts.set(m.id, new Set(['default']));
+    });
+    update();
+  } });
   const grid = h(
     'div',
     { class: 'split' },
@@ -370,15 +400,7 @@ function newRun(initialPromptId, initialVersionId) {
         'div',
         { class: 'section-heading' },
         h('h3', {}, 'Prompts'),
-        button(
-          'All',
-          () => {
-            state.prompts.forEach((p) => promptIds.add(p.id));
-            grid.querySelectorAll('[data-prompts] input').forEach((n) => (n.checked = true));
-            update();
-          },
-          'text',
-        ),
+        h('label', { class: 'inline-check' }, allPrompts, 'All'),
       ),
       h(
         'div',
@@ -399,7 +421,8 @@ function newRun(initialPromptId, initialVersionId) {
     h(
       'section',
       {},
-      h('h3', {}, 'Models'),
+      h('div', { class: 'section-heading' }, h('h3', {}, 'Models'),
+        h('label', { class: 'inline-check' }, allModels, 'All')),
       modelArea,
     ),
   );
@@ -420,11 +443,11 @@ function newRun(initialPromptId, initialVersionId) {
       modelArea.replaceChildren(...enabledModels.map(m => {
         const capabilities = catalog.find(n => n.id === m.id);
         const options = capabilities?.reasoningEfforts || [];
-        const checks = [];
         const fieldset = options.length ? h('fieldset', { class: 'reasoning-choices', 'data-model-id': m.id },
           h('legend', {}, 'Reasoning effort'),
           ['default', ...options].map(effort => {
             const checkbox = h('input', { type: 'checkbox', checked: effort === 'default',
+              'data-effort': effort,
               'aria-label': name(m.name) + ' reasoning ' + effort,
               onChange: event => {
                 const values = efforts.get(m.id);
@@ -433,10 +456,8 @@ function newRun(initialPromptId, initialVersionId) {
                   else values.delete('default');
                   values.add(effort);
                 } else values.delete(effort);
-                checks.forEach(item => { item.checkbox.checked = values.has(item.effort); });
                 update();
               } });
-            checks.push({ checkbox, effort });
             return h('label', { class: 'inline-check' }, checkbox,
               effort === 'default' ? 'Default' + (capabilities.defaultReasoningEffort ? ' (' + capabilities.defaultReasoningEffort + ')' : '') : effort);
           })) : null;

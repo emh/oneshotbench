@@ -30,7 +30,9 @@ The server reads `OPENROUTER_API_KEY` from `.env`. You can replace it and verify
 4. For models with reasoning controls, select one or more supported effort levels. Each level creates a separate result; **Default** leaves the choice to the provider. Temperature and token limits come from **Settings**. Watch results in **Runs**, searchable and filterable by model, prompt, or status. Runs and gallery cards show input/output tokens, plus reasoning tokens when reported (already included in output). Missing usage is shown as `—`.
 5. Select 2–9 completed results from the same prompt to compare. Different prompt versions can be compared and are labeled. Each tile has a model/result selector; layouts support 1–9 columns, including 2×2, 3×3, and a single row.
 
-The gallery groups completed results by batch, newest first, with the submission date/time, prompt versions, and models above each batch's previews. Prompt/model filters hide matching cards in place; selection and returning from comparison preserve the existing preview documents and their state. Batch summaries describe all completed results in that batch, even while filters hide some of them. Reload the page to fetch new results.
+The gallery groups completed results by batch, newest first, with the submission date/time, prompt versions, and models above each batch's previews. Prompt/model/reasoning filters hide matching cards in place; selection and returning from comparison preserve the existing preview documents and their state. Runs also support reasoning-level filtering. **Default** matches runs with no explicit effort, including older runs; it does not infer a provider's effort. Batch summaries describe all completed results in that batch, even while filters hide some of them. Reload the page to fetch new results.
+
+In **New run**, each **All** checkbox selects or clears its entire prompt/model list and reflects partial selection. Selecting all models resets every model to its default effort.
 
 ## Prompt and run semantics
 
