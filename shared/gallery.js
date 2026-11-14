@@ -1,4 +1,9 @@
 export const filterKeys = ['prompt', 'model', 'effort', 'version', 'batch', 'status'];
+export const plotAxes = {
+  'cost-tokens': { x: 'tokens', y: 'cost', label: 'Cost vs tokens' },
+  'cost-time': { x: 'time', y: 'cost', label: 'Cost vs time' },
+  'time-tokens': { x: 'tokens', y: 'time', label: 'Time vs tokens' },
+};
 export function readGalleryURL(search) {
   const params = new URLSearchParams(search);
   const compare = [...new Set((params.get('run') || params.get('compare') || '').split(',').filter(Boolean))].slice(0, 9);
@@ -7,6 +12,8 @@ export function readGalleryURL(search) {
     ...Object.fromEntries(filterKeys.map(key => [key, params.get(key) || ''])), compare,
     view: ['prompts', 'scatter'].includes(params.get('view')) ? params.get('view') : 'gallery',
     metric: ['input', 'output', 'reasoning'].includes(params.get('tokens')) ? params.get('tokens') : 'total',
+    axes: Object.hasOwn(plotAxes, params.get('axes')) ? params.get('axes') : 'cost-tokens',
+    hiddenModels: [...new Set(params.getAll('hideModel').filter(Boolean))],
     columns: Number.isInteger(columns) && columns >= 1 && columns <= 9 ? columns : null,
   };
 }
@@ -19,6 +26,8 @@ export function galleryURL(base, state) {
   if (ids.length) url.searchParams.set(ids.length === 1 ? 'run' : 'compare', ids.join(','));
   if (state.columns) url.searchParams.set('columns', state.columns);
   if (state.metric && state.metric !== 'total') url.searchParams.set('tokens', state.metric);
+  if (state.axes && state.axes !== 'cost-tokens') url.searchParams.set('axes', state.axes);
+  for (const id of new Set(state.hiddenModels || [])) url.searchParams.append('hideModel', id);
   return url;
 }
 export function matchesRun(run, filters) {
@@ -39,7 +48,13 @@ export function tokenCount(run, metric = 'total') {
 }
 export function plotData(runs, filters, metric) {
   const matching = runs.filter(run => matchesRun(run, filters));
-  const points = matching.map(run => ({ run, tokens: tokenCount(run, metric), cost: count(run.metrics?.cost) }))
-    .filter(point => point.tokens !== null && point.cost !== null);
-  return { points, missing: matching.length - points.length };
+  const models = [...new Map(matching.map(run => [run.model_id, run.model_name]))];
+  const active = matching.filter(run => !(filters.hiddenModels || []).includes(run.model_id));
+  const axes = plotAxes[filters.axes] || plotAxes['cost-tokens'];
+  const points = active.map(run => {
+    const duration = count(run.metrics?.durationMs);
+    const point = { run, tokens: tokenCount(run, metric), cost: count(run.metrics?.cost), time: duration === null ? null : duration / 1000 };
+    return { ...point, x: point[axes.x], y: point[axes.y] };
+  }).filter(point => point.x !== null && point.y !== null);
+  return { points, models, missing: active.length - points.length };
 }

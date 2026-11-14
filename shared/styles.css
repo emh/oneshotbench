@@ -788,7 +788,9 @@ summary {
 .plot-point { opacity: .8; stroke: var(--surface); stroke-width: 1.5; }
 .plot-point:hover, .plot-point.inspected, .scatterplot a:focus .plot-point { opacity: 1; stroke: white; stroke-width: 3; }
 .plot-legend { display: flex; flex-wrap: wrap; gap: 12px 22px; padding: 12px 20px; font-size: 11px; color: var(--muted); }
-.plot-legend span { display: inline-flex; align-items: center; gap: 8px; }
+.plot-legend button { display: inline-flex; align-items: center; gap: 8px; padding: 4px 0; border: 0; background: none; color: var(--text); font: inherit; }
+.plot-legend button[aria-pressed="false"] { color: var(--muted); text-decoration: line-through; }
+.plot-legend button[aria-pressed="false"] i { opacity: .25; }
 .plot-legend i { width: 8px; height: 8px; border-radius: 50%; }
 .plot-popup { position: fixed; z-index: 100; display: grid; gap: 12px; width: min(380px, calc(100vw - 24px)); padding: 18px; border: 1px solid var(--line); background: var(--surface); box-shadow: 0 12px 36px #0008; font-size: 12px; overflow-wrap: anywhere; }
 .plot-popup .section-heading { flex-wrap: wrap; }
