@@ -107,6 +107,9 @@ code,
   font: 11px var(--mono);
   color: var(--muted);
 }
+tr.not-comparable {
+  opacity: 0.35;
+}
 small {
   display: block;
   font: 10px/1.6 var(--mono);
@@ -915,11 +918,13 @@ summary {
   padding: 0 12px;
   background: #21232a;
 }
-.tile-heading select {
-  border: 0;
-  background: transparent;
+.tile-result {
   margin-right: auto;
   max-width: 450px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .tile-heading code {
   font-size: 10px;
