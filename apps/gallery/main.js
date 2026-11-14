@@ -313,6 +313,7 @@ function filterOptions(key) {
 function filterSelect(label, key) {
   const value = routeState()[key], choices = filterOptions(key);
   if (value && !choices.some(([id]) => id === value)) choices.push([value, 'Unavailable · ' + value]);
+  if (key === 'version' && choices.filter(([id]) => id).length <= 1) return null;
   return select(label, choices, value, next => changeFilter(key, next));
 }
 function syncFilterControls() {
@@ -321,6 +322,7 @@ function syncFilterControls() {
     if (value && !choices.some(([id]) => id === value)) choices.push([value, 'Unavailable · ' + value]);
     control.replaceChildren(...choices.map(([id, label]) => h('option', { value: id }, label)));
     control.value = value;
+    if (key === 'version') control.hidden = choices.filter(([id]) => id).length <= 1;
   }
 }
 function renderPromptIndex() {
@@ -342,9 +344,9 @@ function renderPromptIndex() {
             galleryURL(location.href, { prompt: p.id, version: String(v.version) }).href, 'badge prompt-results'),
         ].filter(Boolean));
       }
-      const versionSelect = select('Version for ' + p.title,
+      const versionSelect = versions.length > 1 ? select('Version for ' + p.title,
         versions.map(v => [String(v.version), 'v' + v.version]), String(latest.version),
-        value => showVersion(versions.find(v => String(v.version) === value)));
+        value => showVersion(versions.find(v => String(v.version) === value))) : null;
       showVersion(latest);
       return h('article', { class: 'panel public-prompt', 'data-prompt-id': p.id },
         h('div', { class: 'section-heading' }, h('div', { class: 'public-prompt-title' }, title, versionSelect), resultCount), text);

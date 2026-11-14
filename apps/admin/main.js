@@ -479,12 +479,12 @@ function newRun(initialPromptId, initialVersionId) {
         { class: 'choices', 'data-prompts': '' },
         state.prompts.map((p) => {
           const title = h('span', {}, p.versions.find(v => v.id === promptVersions[p.id]).title);
-          const version = select('Run version for ' + p.title,
+          const version = p.versions.length > 1 ? select('Run version for ' + p.title,
             p.versions.map(v => [v.id, 'v' + v.version + (v.id === p.version_id ? ' · latest' : '')]),
             promptVersions[p.id], id => {
               promptVersions[p.id] = id;
               title.textContent = p.versions.find(v => v.id === id).title;
-            });
+            }) : null;
           return h('div', { class: 'prompt-choice' },
             choice(p.id, title, '', promptIds), version);
         }),
@@ -590,13 +590,13 @@ function renderPrompts(container) {
               h(
                 'div',
                 { class: 'actions' },
-                select('View version for ' + p.title,
+                p.versions.length > 1 ? select('View version for ' + p.title,
                   p.versions.map(version => [version.id, 'v' + version.version + (version.id === p.version_id ? ' · latest' : '')]),
                   v.id, id => {
                     if (id === p.version_id) viewedVersions.delete(p.id);
                     else viewedVersions.set(p.id, id);
                     render();
-                  }),
+                  }) : null,
                 badge(v.locked_at ? 'locked' : 'draft'),
                 button('×', () => archive(p), 'icon', { 'aria-label': 'Archive ' + p.title }),
               ),
