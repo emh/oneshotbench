@@ -260,10 +260,14 @@ function syncGallery() {
     batch.runs = runs;
     batch.createdAt = runs.reduce((first, r) => r.created_at < first ? r.created_at : first, runs[0].created_at);
     batch.summaryKey = null;
+    batch.titleLink = h('a', { href: urlFor({ batch: id }), onClick: event => {
+      if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault(); changeFilter('batch', id);
+    } }, h('time', { dateTime: batch.createdAt }, new Date(batch.createdAt).toLocaleString(undefined,
+      { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })));
     batch.heading.replaceChildren(
       h('div', { class: 'section-heading' },
-        h('h2', {}, h('time', { dateTime: batch.createdAt }, new Date(batch.createdAt).toLocaleString(undefined,
-          { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }))),
+        h('h2', {}, batch.titleLink),
         h('code', {}, id.slice(0, 8))),
       h('dl', { class: 'batch-summary' }));
     batch.count = badge('');
@@ -324,6 +328,7 @@ function updateGallery() {
     if (matches && entry.near && entry.previewState === 'idle') previewQueue.add(entry);
   }
   [...batches.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).forEach((batch, index) => {
+    batch.titleLink.href = urlFor({ batch: batch.section.dataset.batchId });
     const visibleRuns = batch.runs.filter(r => !cards.get(r.id).card.hidden), count = visibleRuns.length;
     const summaryKey = visibleRuns.map(r => r.id).join(',');
     if (batch.summaryKey !== summaryKey) {
