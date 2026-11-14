@@ -45,7 +45,8 @@ window.addEventListener('popstate', () => {
 async function load() {
   try {
     const exported = document.querySelector('meta[name="oneshot-export"]');
-    const response = await fetch(exported ? new URL('data.json', location.href) : '/api/gallery');
+    const endpoint = document.querySelector('meta[name="oneshot-api"]')?.content || '';
+    const response = await fetch(exported ? new URL('data.json', location.href) : endpoint + '/api/gallery');
     if (!response.ok) throw Error('Gallery unavailable');
     data = await response.json();
     render();
@@ -80,7 +81,7 @@ function render() {
       { class: 'gallery-header' },
       h('a', { href: './', class: 'brand' }, h('span', { class: 'brand-mark' }, '⌘'), 'ONESHOT'),
       h('span', {}, '/ gallery'),
-      data.mode === 'local' ? link('Admin ↗', '/') : badge('SNAPSHOT'),
+      data.mode === 'local' ? link('Admin ↗', '/') : data.adminUrl ? link('Admin ↗', data.adminUrl) : badge('SNAPSHOT'),
     ),
   );
   const main = h(

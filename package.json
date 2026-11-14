@@ -8,6 +8,10 @@
     "dev": "node scripts/dev.mjs",
     "start": "node server/index.mjs",
     "test": "node --test tests/*.test.mjs",
-    "export:gallery": "node scripts/export-gallery.mjs"
+    "export:gallery": "node scripts/export-gallery.mjs",
+    "cloudflare:deploy": "node scripts/cloudflare-deploy.mjs",
+    "cloudflare:snapshot": "node scripts/cloudflare-snapshot.mjs",
+    "cloudflare:import": "node scripts/cloudflare-import.mjs",
+    "gallery:prepare": "node scripts/prepare-gallery.mjs"
   }
 }

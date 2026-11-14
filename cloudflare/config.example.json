@@ -1,0 +1,17 @@
+{
+  "accountId": "YOUR_CLOUDFLARE_ACCOUNT_ID",
+  "workerName": "oneshotbench",
+  "publicWorkerName": "oneshotbench-gallery",
+  "bucketName": "oneshotbench-outputs",
+  "workflowName": "oneshotbench-runs",
+  "vars": {
+    "ADMIN_ORIGIN": "https://admin.example.com",
+    "ACCESS_ISSUER": "https://YOUR-TEAM.cloudflareaccess.com",
+    "ACCESS_AUD": "YOUR_ACCESS_APPLICATION_AUDIENCE",
+    "GALLERY_URL": "https://YOUR-USER.github.io/oneshotbench/",
+    "GALLERY_ORIGIN": "https://YOUR-USER.github.io",
+    "PUBLIC_GALLERY": "false",
+    "ALLOW_IMPORT": "false"
+  },
+  "publicApiOrigin": "https://oneshotbench-gallery.YOUR-SUBDOMAIN.workers.dev"
+}

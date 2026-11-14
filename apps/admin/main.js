@@ -88,8 +88,8 @@ function render() {
     h(
       'div',
       { class: 'sidebar-bottom' },
-      link('Gallery ↗', '/gallery/'),
-      h('div', { class: 'environment' }, h('i', {}), 'LOCAL', h('span', {}, 'v0.2')),
+      link('Gallery ↗', state.galleryUrl || '/gallery/'),
+      h('div', { class: 'environment' }, h('i', {}), state.environment || 'LOCAL', h('span', {}, 'v0.2')),
     ),
   );
   const main = h(
@@ -99,7 +99,7 @@ function render() {
       'header',
       { class: 'topbar' },
       h('span', {}, 'workspace / ', h('strong', {}, titles[page] || 'Runs')),
-      badge('127.0.0.1'),
+      badge(location.hostname),
     ),
   );
   const content = h('div', { class: 'content' });
@@ -771,7 +771,7 @@ function renderSettings(container) {
         numeric('Temperature', 'temperature', 0, 2, 0.1),
         numeric('Max output tokens', 'maxTokens', 256, 128000),
         numeric('Concurrency', 'concurrency', 1, 8),
-        numeric('Timeout · seconds', 'timeoutSeconds', 15, 1800),
+        numeric('Timeout · seconds', 'timeoutSeconds', 15, state.environment === 'CLOUDFLARE' ? 1740 : 1800),
       ),
     ]),
     section('System prompt', [
@@ -809,6 +809,31 @@ function renderSettings(container) {
     }
   });
   container.append(form);
+  if (state.importEnabled) {
+    const progress = h('span', { role: 'status' });
+    const file = h('input', { type: 'file', accept: '.json,application/json', 'aria-label': 'Workspace snapshot' });
+    const start = button('Import snapshot', async () => {
+      if (!file.files?.[0]) return;
+      start.disabled = true;
+      try {
+        const snapshot = JSON.parse(await file.files[0].text());
+        if (snapshot.format !== 1 || !Array.isArray(snapshot.runs)) throw Error('Invalid workspace snapshot');
+        const send = body => api('/import', 'POST', { ...body, snapshotId: snapshot.snapshotId });
+        await send({ phase: 'start', settings: snapshot.settings, prompts: snapshot.prompts,
+          versions: snapshot.versions, runCount: snapshot.runs.length });
+        for (let i = 0; i < snapshot.runs.length; i++) {
+          progress.textContent = `${i + 1}/${snapshot.runs.length}`;
+          await send({ phase: 'run', run: snapshot.runs[i] });
+        }
+        await send({ phase: 'finish' });
+        progress.textContent = 'Import complete';
+        await refresh();
+        toast('Workspace imported');
+      } catch (e) { progress.textContent = e.message; }
+      finally { start.disabled = false; }
+    });
+    container.append(h('section', { class: 'panel' }, h('h2', {}, 'Migration'), file, start, progress));
+  }
 }
 async function detail(id) {
   let run,
