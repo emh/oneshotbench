@@ -30,7 +30,7 @@ The server reads `OPENROUTER_API_KEY` from `.env`. You can replace it and verify
 4. Watch results in **Runs**. Search and filter by model, prompt, or status, and sort by date. Run details include the original response, prompt, settings, provider, tokens, duration, and reported cost.
 5. Select 2–9 completed results from the same prompt to compare. Different prompt versions can be compared and are labeled. Each tile has a model/result selector; layouts support 1–9 columns, including 2×2, 3×3, and a single row.
 
-The gallery groups completed results by batch, with the submission date/time, prompt versions, and models above each batch's previews. Search and filters hide matching cards in place; selection, sorting, refresh of unchanged outputs, and returning from comparison preserve the existing preview documents and their state. Batch summaries describe all completed results in that batch, even while filters hide some of them.
+The gallery groups completed results by batch, newest first, with the submission date/time, prompt versions, and models above each batch's previews. Prompt/model filters hide matching cards in place; selection and returning from comparison preserve the existing preview documents and their state. Batch summaries describe all completed results in that batch, even while filters hide some of them. Reload the page to fetch new results.
 
 ## Prompt and run semantics
 

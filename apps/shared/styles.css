@@ -748,9 +748,7 @@ summary {
   color: var(--muted);
   font: 12px var(--mono);
 }
-.gallery-header > :last-child {
-  margin-left: auto;
-}
+.gallery-filters > .badge { margin-left: auto; }
 .gallery-content {
   padding: 30px;
   max-width: 2400px;

@@ -1,9 +1,7 @@
 import {
   h,
   button,
-  link,
   select,
-  input,
   badge,
   name,
   money,
@@ -18,10 +16,8 @@ let data,
   selected = new Set(),
   compare = [],
   columns = null,
-  search = '',
   prompt = '',
-  model = '',
-  sort = 'newest';
+  model = '';
 function readURL() {
   compare = [
     ...new Set(
@@ -68,18 +64,9 @@ function mountGallery() {
   const notice = h('div', { role: 'status' });
   galleryView = h('div', { class: 'gallery-app' },
     h('header', { class: 'gallery-header' },
-      h('a', { href: './', class: 'brand' }, h('span', { class: 'brand-mark' }, '⌘'), 'ONESHOT'),
-      h('span', {}, '/ gallery'),
-      data.mode === 'local' ? link('Admin ↗', '/') : data.adminUrl ? link('Admin ↗', data.adminUrl) : badge('SNAPSHOT')),
+      h('a', { href: './', class: 'brand' }, h('span', { class: 'brand-mark' }, '⌘'), 'ONESHOT')),
     h('main', { class: 'gallery-content' },
-      h('div', { class: 'page-heading' }, h('h1', {}, 'Gallery'),
-        h('div', { class: 'actions' }, resultCount, button('Refresh', load))),
-      h('div', { class: 'toolbar standalone' },
-        input('Search gallery', search, v => { search = v; updateGallery(); },
-          { type: 'text', placeholder: 'Search implementations' }),
-        promptFilter, modelFilter,
-        select('Sort gallery by date', [['newest', 'Newest first'], ['oldest', 'Oldest first']], sort,
-          v => { sort = v; updateGallery(); })),
+      h('div', { class: 'toolbar standalone gallery-filters' }, promptFilter, modelFilter, resultCount),
       notice, batchList, noResults, selectionBar));
   comparisonHost = h('div', { hidden: true });
   galleryControls = { resultCount, batchList, noResults, selectionCount, selectionBar,
@@ -168,27 +155,24 @@ function syncGallery() {
 }
 function updateGallery() {
   const first = data.runs.find(r => selected.has(r.id));
-  let visible = 0, visibleBatches = 0;
+  let visible = 0;
   for (const entry of cards.values()) {
     const r = entry.run;
-    const matches = (!prompt || r.prompt_id === prompt) && (!model || r.model_id === model) &&
-      (r.prompt_title + ' ' + r.model_name).toLowerCase().includes(search.toLowerCase());
+    const matches = (!prompt || r.prompt_id === prompt) && (!model || r.model_id === model);
     entry.card.hidden = !matches;
     if (matches) visible++;
     entry.card.classList.toggle('selected', selected.has(r.id));
     entry.checkbox.checked = selected.has(r.id);
     entry.checkbox.disabled = !selected.has(r.id) && (selected.size >= 9 || !!first && first.prompt_id !== r.prompt_id);
   }
-  [...batches.values()].sort((a, b) => sort === 'newest'
-    ? b.createdAt.localeCompare(a.createdAt) : a.createdAt.localeCompare(b.createdAt)).forEach((batch, index) => {
+  [...batches.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).forEach((batch, index) => {
     const count = batch.runs.filter(r => !cards.get(r.id).card.hidden).length;
     batch.section.hidden = !count;
     // CSS order preserves iframe browsing contexts, unlike moving DOM nodes.
     batch.section.style.order = index;
     batch.count.textContent = count === batch.runs.length ? count + ' results' : count + '/' + batch.runs.length + ' results';
-    if (count) visibleBatches++;
   });
-  galleryControls.resultCount.textContent = visible + ' results · ' + visibleBatches + ' batches';
+  galleryControls.resultCount.textContent = visible + ' results';
   galleryControls.noResults.hidden = !!visible;
   galleryControls.selectionBar.hidden = !selected.size;
   galleryControls.selectionCount.textContent = selected.size + '/9 selected';
