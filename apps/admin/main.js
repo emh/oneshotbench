@@ -41,6 +41,8 @@ async function refresh() {
     const next = await api('/state');
     if (JSON.stringify(next) !== JSON.stringify(state)) {
       state = next;
+      const ids = new Set(state.runs.map(run => run.id));
+      for (const id of selected) if (!ids.has(id)) selected.delete(id);
       render();
     }
   } catch (e) {
@@ -141,6 +143,7 @@ function renderRuns(container) {
   );
   const change = (key, value) => {
     f[key] = value;
+    selected.clear();
     render();
   };
   const rows = state.runs
@@ -205,22 +208,32 @@ function renderRuns(container) {
       ),
     ),
   );
+  const selectedVisible = rows.filter(run => selected.has(run.id)).length;
+  const selectAll = h('input', { type: 'checkbox', 'aria-label': 'Select all visible runs',
+    checked: rows.length > 0 && selectedVisible === rows.length,
+    indeterminate: selectedVisible > 0 && selectedVisible < rows.length,
+    disabled: !rows.length,
+    onChange: event => {
+      rows.forEach(run => event.target.checked ? selected.add(run.id) : selected.delete(run.id));
+      render();
+    },
+  });
   const table = h(
     'table',
-    {},
+    { class: 'runs-table' },
     h(
       'thead',
       {},
       h(
         'tr',
         {},
-        ['', 'IMPLEMENTATION', 'MODEL', 'STATUS', 'DURATION', 'TOKENS', 'COST', 'CREATED', ''].map((t) =>
+        ['IMPLEMENTATION', 'MODEL', 'STATUS', 'DURATION', 'TOKENS', 'COST', 'CREATED', ''].map((t) =>
           h('th', {}, t),
         ),
+        h('th', { class: 'run-select' }, selectAll),
       ),
     ),
   );
-  const first = state.runs.find((r) => selected.has(r.id));
   table.append(
     h(
       'tbody',
@@ -228,24 +241,7 @@ function renderRuns(container) {
       rows.map((r) =>
         h(
           'tr',
-          { class: first && (r.status !== 'completed' || r.prompt_id !== first.prompt_id) ? 'not-comparable' : '' },
-          h(
-            'td',
-            {},
-            h('input', {
-              type: 'checkbox',
-              'aria-label': 'Select ' + r.id,
-              checked: selected.has(r.id),
-              disabled:
-                r.status !== 'completed' ||
-                (!selected.has(r.id) &&
-                  (selected.size >= 9 || (first && first.prompt_id !== r.prompt_id))),
-              onChange: () => {
-                selected.has(r.id) ? selected.delete(r.id) : selected.add(r.id);
-                render();
-              },
-            }),
-          ),
+          {},
           h(
             'td',
             {},
@@ -278,6 +274,13 @@ function renderRuns(container) {
             {},
             button('↗', () => detail(r.id), 'icon', { 'aria-label': 'Open run ' + r.id }),
           ),
+          h('td', { class: 'run-select' }, h('input', {
+            type: 'checkbox', 'aria-label': 'Select run ' + r.id, checked: selected.has(r.id),
+            onChange: event => {
+              event.target.checked ? selected.add(r.id) : selected.delete(r.id);
+              render();
+            },
+          })),
         ),
       ),
     ),
@@ -290,18 +293,48 @@ function renderRuns(container) {
       h(
         'div',
         { class: 'selection' },
-        h('span', {}, selected.size + '/9 selected'),
+        h('span', {}, selected.size + ' selected'),
         button('Clear', () => {
           selected.clear();
           render();
         }),
-        link(
-          'Compare ↗',
-          '/gallery/?compare=' + [...selected].join(','),
-          selected.size >= 2 ? 'primary' : 'disabled',
-        ),
+        button('Delete selected', deleteSelectedRuns, 'danger'),
       ),
     );
+}
+function deleteSelectedRuns() {
+  const runs = state.runs.filter(run => selected.has(run.id));
+  if (!runs.length) return;
+  const active = runs.filter(run => ['queued', 'running'].includes(run.status)).length;
+  const error = h('div', {});
+  let deleting = false, dialog;
+  const cancel = button('Cancel', () => dialog.close());
+  const confirm = button('Delete ' + runs.length + (runs.length === 1 ? ' run' : ' runs'), async () => {
+    if (deleting) return;
+    deleting = true;
+    confirm.disabled = cancel.disabled = true;
+    error.replaceChildren();
+    try {
+      const result = await api('/runs', 'DELETE', { ids: runs.map(run => run.id) });
+      runs.forEach(run => selected.delete(run.id));
+      dialog.close();
+      await refresh();
+      render();
+      toast(result.deleted.length + ' runs deleted' + (result.cleanupPending ? ' · output cleanup pending' : ''));
+    } catch (e) {
+      error.replaceChildren(errorBox(e.message));
+    } finally {
+      deleting = false;
+      confirm.disabled = cancel.disabled = false;
+    }
+  }, 'danger');
+  dialog = modal('Delete selected runs?', h('div', {},
+    h('p', {}, 'Permanently delete ' + runs.length + ' runs and their saved outputs. This cannot be undone.'),
+    active ? h('p', {}, active + ' queued or running runs will be cancelled. Requests already sent may still incur charges.') : null,
+    h('ul', { class: 'delete-run-list' }, runs.map(run => h('li', {},
+      h('strong', {}, run.prompt_title + ' · v' + run.version),
+      h('div', {}, runModelName(run) + ' · ' + run.status + ' · ' + run.id.slice(0, 8))))),
+    error), [cancel, confirm]);
 }
 function newRun(initialPromptId, initialVersionId) {
   const promptIds = new Set(initialPromptId ? [initialPromptId] : []),

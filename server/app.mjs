@@ -4,7 +4,7 @@ import { resolve, extname } from 'node:path';
 import { safeDocument, PREVIEW_CSP } from './format.mjs';
 import { modelCatalog, variants, validateEfforts } from './reasoning.mjs';
 
-import { bad, text, number, promptBody, ids } from './validation.mjs';
+import { bad, text, number, promptBody, ids, runIds } from './validation.mjs';
 async function bodyOf(req) {
   let body = '';
   for await (const chunk of req) {
@@ -154,6 +154,13 @@ export function createApp({
           const result = store.enqueue(promptIds, modelIds, overrides, body.promptVersions);
           runner.pump();
           return json(res, 201, result);
+        }
+        if (req.method === 'DELETE' && path === '/api/runs') {
+          const selected = runIds((await bodyOf(req)).ids);
+          for (const id of selected) runner.cancel(id);
+          const deleted = store.deleteRuns(selected);
+          runner.pump();
+          return json(res, 200, { deleted });
         }
         const runMatch = path.match(/^\/api\/runs\/([^/]+)(?:\/(html|cancel))?$/);
         if (runMatch) {

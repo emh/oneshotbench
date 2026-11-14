@@ -1,4 +1,4 @@
-import { bad, text, number, promptBody, ids } from '../server/validation.mjs';
+import { bad, text, number, promptBody, ids, runIds } from '../server/validation.mjs';
 import { safeDocument, PREVIEW_CSP } from '../server/format.mjs';
 import { variants, validateEfforts } from '../server/reasoning.mjs';
 
@@ -90,6 +90,8 @@ export async function api(request, workspace) {
     await workspace.wake();
     return json(result, 201);
   }
+  if (method === 'DELETE' && path === '/api/runs')
+    return json(await workspace.deleteRuns(runIds((await bodyOf(request)).ids)));
   const run = path.match(/^\/api\/runs\/([^/]+)(?:\/(html|cancel))?$/);
   if (run) {
     const metadata = store.run(run[1]);

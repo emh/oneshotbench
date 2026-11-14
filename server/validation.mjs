@@ -28,3 +28,9 @@ export function ids(value) {
     throw bad('Select at least one prompt and one model.');
   return [...new Set(value)];
 }
+export function runIds(value) {
+  if (!Array.isArray(value) || !value.length || value.length > 10000 ||
+    value.some(id => typeof id !== 'string' || !id || id.length > 200))
+    throw bad('Select between 1 and 10,000 runs.');
+  return [...new Set(value)];
+}

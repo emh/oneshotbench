@@ -363,6 +363,32 @@ test('admin API validates input, protects mutations, and never returns credentia
   assert.equal(gallery.runs.length, 0);
   assert.ok(!('selectedModels' in gallery.settings));
 });
+test('bulk delete API protects mutations, cancels active runs, and removes results without unlocking prompts', async t => {
+  const { store, prompt } = fixture();
+  const runner = new Runner(store, { getKey: () => null });
+  const ids = store.enqueue([prompt.id], models.map(m => m.id)).ids;
+  store.updateRun(ids[0], { status: 'completed', html, raw: html });
+  const app = createApp({ store, runner, getKey: () => null });
+  await new Promise(resolve => app.listen(0, '127.0.0.1', resolve));
+  t.after(() => { runner.stop(); app.close(); store.close(); });
+  const base = `http://127.0.0.1:${app.address().port}`;
+  const remove = (body, headers = {}) => fetch(base + '/api/runs', { method: 'DELETE',
+    headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) });
+  assert.equal((await remove({ ids })).status, 403);
+  const auth = { 'X-Oneshot-Client': 'admin' };
+  assert.equal((await remove({ ids }, { ...auth, Origin: 'https://attacker.example' })).status, 403);
+  assert.equal((await remove({ ids: [null] }, auth)).status, 400);
+  assert.equal(store.runs().length, 2);
+  const response = await remove({ ids: [...ids, ids[0]] }, auth);
+  assert.equal(response.status, 200);
+  assert.deepEqual((await response.json()).deleted, ids);
+  assert.equal(store.runs().length, 0);
+  assert.ok(store.prompt(prompt.id).locked_at);
+  assert.equal(store.prompt(prompt.id).run_count, 0);
+  assert.equal((await fetch(base + '/api/runs/' + ids[0])).status, 404);
+  assert.equal((await (await fetch(base + '/api/gallery')).json()).runs.length, 0);
+  assert.deepEqual((await (await remove({ ids }, auth)).json()).deleted, []);
+});
 test('direct preview responses enforce CSP and sandbox even outside the gallery', async (t) => {
   const { store, prompt } = fixture();
   const { ids } = store.enqueue([prompt.id], ['test/a']);

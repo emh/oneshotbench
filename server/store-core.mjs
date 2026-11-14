@@ -240,6 +240,14 @@ export class StoreCore {
         .prepare(`UPDATE runs SET ${entries.map(([key]) => `${key}=?`).join(',')} WHERE id=?`)
         .run(...entries.map(([key, val]) => (key === 'metrics' ? JSON.stringify(val) : val)), id);
   }
+  deleteRuns(ids, beforeDelete = () => {}) {
+    return this.transaction(() => {
+      const runs = ids.map(id => this.run(id)).filter(Boolean);
+      beforeDelete(runs);
+      for (const run of runs) this.db.prepare('DELETE FROM runs WHERE id=?').run(run.id);
+      return runs.map(run => run.id);
+    });
+  }
   recover() {
     this.db
       .prepare(

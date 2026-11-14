@@ -43,6 +43,7 @@ function fixture(t) {
     OUTPUTS: {
       async get(key) { const value = objects.get(key); return value ? { json: async () => JSON.parse(value) } : null; },
       async put(key, value) { objects.set(key, value); }, async head(key) { return objects.has(key); },
+      async delete(key) { objects.delete(key); },
     },
     RUNS: {
       async create({ id }) { if (jobs.has(id)) throw Error('exists'); jobs.set(id, 'queued'); },
@@ -60,6 +61,74 @@ function fixture(t) {
 const request = (path, body, method = 'POST') => new Request('https://admin.example.com' + path, {
   method, headers: { 'Content-Type': 'application/json', 'X-Oneshot-Client': 'admin' },
   ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+});
+
+test('bulk run deletion terminates active jobs, removes artifacts, and preserves locked prompt versions', async t => {
+  const { store, workspace, env, jobs, objects } = fixture(t);
+  const prompt = store.createPrompt({ title: 'Delete fixture', category: 'Test', content: 'Keep this prompt' });
+  const ids = Array.from({ length: 3 }, () => store.enqueue([prompt.id], ['test/model']).ids[0]);
+  await workspace.alarm();
+  store.updateRun(ids[1], { status: 'completed' });
+  objects.set(`runs/${ids[1]}.json`, JSON.stringify({ html, raw: html }));
+  const invalid = await workspace.fetch(request('/api/runs', { ids: [] }, 'DELETE'));
+  assert.equal(invalid.status, 400);
+  assert.equal(store.runs().length, 3);
+  const result = await workspace.fetch(request('/api/runs', { ids: [...ids, ids[0]] }, 'DELETE'));
+  assert.equal(result.status, 200);
+  assert.equal((await result.json()).deleted.length, 3);
+  assert.equal(store.runs().length, 0);
+  assert.equal(objects.size, 0);
+  assert.equal(jobs.get(ids[0]), 'terminated');
+  assert.ok(store.prompt(prompt.id).locked_at);
+  assert.equal(store.prompt(prompt.id).run_count, 0);
+  assert.equal(store.prompt(prompt.id).content, 'Keep this prompt');
+  const claim = await workspace.fetch(request('/internal/claim', { id: ids[0] }));
+  assert.deepEqual(await claim.json(), {});
+  // A request that finished while deletion was in progress cannot restore its artifact.
+  objects.set(`runs/${ids[0]}.json`, JSON.stringify({ status: 'completed', html, raw: html }));
+  await workspace.finish(ids[0]);
+  assert.equal(objects.size, 0);
+  assert.equal(store.run(ids[0]), undefined);
+  assert.deepEqual((await (await workspace.fetch(request('/api/runs', { ids }, 'DELETE'))).json()).deleted, []);
+  const gallery = await workspace.fetch(new Request('https://admin.example.com/api/gallery'));
+  assert.equal((await gallery.json()).runs.length, 0);
+});
+
+test('failed artifact cleanup remains durable and is retried by the alarm', async t => {
+  const { store, workspace, env, objects, storage } = fixture(t);
+  const prompt = store.createPrompt({ title: 'Cleanup', category: 'Test', content: 'HTML' });
+  const id = store.enqueue([prompt.id], ['test/model']).ids[0];
+  store.updateRun(id, { status: 'completed' });
+  objects.set(`runs/${id}.json`, JSON.stringify({ html }));
+  const remove = env.OUTPUTS.delete;
+  env.OUTPUTS.delete = async () => { throw Error('Temporary storage error'); };
+  const result = await workspace.deleteRuns([id]);
+  assert.equal(result.cleanupPending, 1);
+  assert.equal(store.run(id), undefined);
+  assert.ok(storage.alarm);
+  env.OUTPUTS.delete = remove;
+  const recovered = new WorkspaceService({ storage }, env);
+  await recovered.alarm();
+  assert.equal(objects.size, 0);
+  assert.equal(store.db.prepare('SELECT COUNT(*) AS n FROM run_deletions').get().n, 0);
+  assert.equal(storage.alarm, null);
+});
+
+test('workflow termination failures keep cleanup pending until the next alarm', async t => {
+  const { store, workspace, env, jobs, storage } = fixture(t);
+  const prompt = store.createPrompt({ title: 'Active cleanup', category: 'Test', content: 'HTML' });
+  const id = store.enqueue([prompt.id], ['test/model']).ids[0];
+  await workspace.alarm();
+  const get = env.RUNS.get;
+  env.RUNS.get = async () => { throw Error('Temporary workflow outage'); };
+  assert.equal((await workspace.deleteRuns([id])).cleanupPending, 1);
+  assert.equal(store.run(id), undefined);
+  await workspace.alarm();
+  assert.ok(storage.alarm);
+  env.RUNS.get = get;
+  await workspace.alarm();
+  assert.equal(jobs.get(id), 'terminated');
+  assert.equal(store.db.prepare('SELECT COUNT(*) AS n FROM run_deletions').get().n, 0);
 });
 
 test('Cloudflare SQLite adapter preserves versions and queue concurrency without replaying paid calls', async t => {
