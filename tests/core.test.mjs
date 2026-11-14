@@ -457,6 +457,15 @@ test('direct preview responses enforce CSP and sandbox even outside the gallery'
   assert.match(res.headers.get('content-security-policy'), /sandbox allow-scripts/);
   assert.match(res.headers.get('content-security-policy'), /connect-src 'none'/);
   assert.match(await res.text(), /Content-Security-Policy/);
+  const base = `http://127.0.0.1:${app.address().port}`;
+  const metadata = await (await fetch(base + '/api/gallery?metadata=1')).json();
+  assert.equal(metadata.lazyPreviews, true);
+  assert.equal(metadata.runs.length, 1);
+  assert.ok(!('html' in metadata.runs[0]));
+  assert.ok(!('raw' in metadata.runs[0]));
+  assert.deepEqual(await (await fetch(base + '/api/gallery?run=' + ids[0])).json(), { id: ids[0], html });
+  store.updateRun(ids[0], { status: 'failed' });
+  assert.equal((await fetch(base + '/api/gallery?run=' + ids[0])).status, 404);
 });
 test('gallery export is standalone, completed-only, and excludes private configuration', () => {
   const dir = mkdtempSync(resolve(tmpdir(), 'oneshot-export-'));

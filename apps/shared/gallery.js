@@ -1,4 +1,6 @@
 export const filterKeys = ['prompt', 'model', 'effort', 'version', 'batch', 'status'];
+export const hasGalleryFilters = state => filterKeys.some(key => !!state[key]) || !!state.hiddenModels?.length;
+export const clearGalleryFilters = state => ({ ...state, ...Object.fromEntries(filterKeys.map(key => [key, ''])), hiddenModels: [] });
 export const plotAxes = {
   'cost-tokens': { x: 'tokens', y: 'cost', label: 'Cost vs tokens' },
   'cost-time': { x: 'time', y: 'cost', label: 'Cost vs time' },

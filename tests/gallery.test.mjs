@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { galleryURL, readGalleryURL, matchesRun, tokenCount, plotData } from '../apps/shared/gallery.js';
+import { galleryURL, readGalleryURL, matchesRun, tokenCount, plotData, hasGalleryFilters, clearGalleryFilters } from '../apps/shared/gallery.js';
 import { Store } from '../server/store.mjs';
 
 test('gallery links round-trip filters, special model IDs, and single/multiple result routes', () => {
@@ -40,6 +40,16 @@ test('scatterplot axis pairs use recorded seconds and only require the selected 
   assert.equal(allHidden.points.length, 0);
   assert.equal(allHidden.missing, 0);
   assert.equal(allHidden.models.length, 3);
+});
+
+test('clear all removes filters and hidden models while retaining chart and comparison choices', () => {
+  const state = readGalleryURL('?view=scatter&prompt=p&model=m&effort=high&version=2&batch=b&status=failed&hideModel=a&axes=time-tokens&tokens=reasoning&columns=2');
+  assert.ok(hasGalleryFilters(state));
+  const cleared = clearGalleryFilters(state);
+  assert.equal(hasGalleryFilters(cleared), false);
+  assert.equal(galleryURL('https://example.com/gallery/', cleared).search, '?view=scatter&columns=2&tokens=reasoning&axes=time-tokens');
+  assert.ok(hasGalleryFilters({ hiddenModels: ['a'] }));
+  assert.equal(hasGalleryFilters({ axes: 'cost-time', metric: 'output' }), false);
 });
 
 test('plot data retains zero cost, excludes missing metrics, and never double-counts reasoning tokens', () => {

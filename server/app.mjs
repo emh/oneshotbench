@@ -195,7 +195,16 @@ export function createApp({
           if (req.method === 'GET' && !runMatch[2]) return json(res, 200, run);
         }
         if (req.method === 'GET' && path === '/api/gallery') {
+          if (url.searchParams.has('run')) {
+            const run = store.run(url.searchParams.get('run'));
+            if (!run || run.status !== 'completed' || !run.html) throw bad('Preview not found', 404);
+            return json(res, 200, { id: run.id, html: run.html });
+          }
           const { minWidth, minHeight, columns } = store.settings();
+          if (url.searchParams.get('metadata') === '1') return json(res, 200, {
+            mode: 'local', lazyPreviews: true, ...store.galleryIndex(),
+            settings: { minWidth, minHeight, columns }, runs: store.runs({ completed: true }),
+          });
           return json(res, 200, {
             mode: 'local',
             ...store.galleryIndex(),

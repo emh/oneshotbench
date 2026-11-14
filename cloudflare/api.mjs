@@ -123,7 +123,16 @@ export async function api(request, workspace) {
     }
   }
   if (method === 'GET' && path === '/api/gallery') {
+    if (url.searchParams.has('run')) {
+      const metadata = store.run(url.searchParams.get('run'));
+      if (!metadata || metadata.status !== 'completed') throw bad('Preview not found', 404);
+      const result = await workspace.result(metadata);
+      if (!result.html) throw bad('Preview not found', 404);
+      return json({ id: metadata.id, html: result.html });
+    }
     const { minWidth, minHeight, columns } = store.settings();
+    if (url.searchParams.get('metadata') === '1') return json({ mode: 'cloud', lazyPreviews: true,
+      settings: { minWidth, minHeight, columns }, ...store.galleryIndex(), runs: store.runs({ completed: true }) });
     const runs = [];
     for (const metadata of store.runs({ details: true, completed: true })) {
       const { raw, ...run } = await workspace.result(metadata);

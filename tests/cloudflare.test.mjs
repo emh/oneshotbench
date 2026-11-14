@@ -358,6 +358,37 @@ test('cloud router protects admin and alternate hosts; gallery publishes complet
   assert.ok(!JSON.stringify(state).includes('sk-or-new'));
 });
 
+test('public gallery metadata skips artifact reads and on-demand previews expose only completed HTML', async t => {
+  const { env, store } = fixture(t);
+  env.PUBLIC_GALLERY = 'true';
+  const p = store.createPrompt({ title: 'Lazy preview', content: 'Prompt text' });
+  const good = store.enqueue([p.id], ['test/model']).ids[0];
+  const failed = store.enqueue([p.id], ['test/model']).ids[0];
+  store.updateRun(good, { status: 'completed' });
+  store.updateRun(failed, { status: 'failed' });
+  await env.OUTPUTS.put(`runs/${good}.json`, JSON.stringify({ html, raw: 'private raw response' }));
+  await env.OUTPUTS.put(`runs/${failed}.json`, JSON.stringify({ html: 'private failed output' }));
+  let reads = 0;
+  const get = env.OUTPUTS.get;
+  env.OUTPUTS.get = async key => { reads++; return get(key); };
+  const fetchGallery = query => publicWorker.fetch(new Request('https://public.example.com/api/gallery' + query,
+    { headers: { Origin: env.GALLERY_ORIGIN } }), env);
+  const metadata = await (await fetchGallery('?metadata=1')).json();
+  assert.equal(reads, 0);
+  assert.equal(metadata.lazyPreviews, true);
+  assert.equal(metadata.runs.length, 1);
+  assert.ok(!('html' in metadata.runs[0]));
+  assert.ok(!('raw' in metadata.runs[0]));
+  const preview = await fetchGallery('?run=' + good);
+  assert.equal(preview.headers.get('Access-Control-Allow-Origin'), env.GALLERY_ORIGIN);
+  assert.deepEqual(await preview.json(), { id: good, html });
+  assert.equal(reads, 1);
+  for (const id of [failed, 'missing']) assert.equal((await fetchGallery('?run=' + id)).status, 404);
+  assert.equal(reads, 1);
+  assert.equal((await publicWorker.fetch(new Request('https://public.example.com/api/gallery?run=' + good),
+    { ...env, PUBLIC_GALLERY: 'false' })).status, 404);
+});
+
 test('resumable migration preserves historical data and never replays imported jobs', async t => {
   const { workspace, env, store } = fixture(t);
   env.ALLOW_IMPORT = 'true';
