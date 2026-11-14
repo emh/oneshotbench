@@ -563,6 +563,12 @@ td small {
   color: var(--muted);
   font-size: 12px;
 }
+.token-usage {
+  color: var(--muted);
+}
+.gallery-token-usage {
+  margin: 12px 0;
+}
 .settings-form {
   max-width: 1000px;
 }
@@ -702,6 +708,13 @@ dialog::backdrop {
 .prompt-choice:last-child { border-bottom: 0; }
 .prompt-choice .choice { flex: 1; min-width: 0; border: 0; }
 .prompt-choice select { width: auto; flex-shrink: 0; }
+.run-model-choice { border-bottom: 1px solid var(--line); }
+.run-model-choice:last-child { border-bottom: 0; }
+.run-model-choice > .choice { border-bottom: 0; }
+.reasoning-choices { border: 0; margin: 0; padding: 0 12px 14px 35px; display: flex; flex-wrap: wrap; gap: 8px 14px; }
+.reasoning-choices legend { padding: 0; margin-bottom: 8px; font-size: 10px; color: var(--muted); }
+.reasoning-choices:disabled { opacity: .45; }
+.reasoning-choices .inline-check { font-size: 11px; }
 .prompt-card .actions select { width: auto; }
 .version {
   margin: 10px 0;

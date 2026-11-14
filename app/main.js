@@ -4,7 +4,10 @@ import {
   select,
   badge,
   name,
+  runModelName,
   money,
+  tokens,
+  tokenUsage,
   duration,
   modal,
   empty,
@@ -98,7 +101,7 @@ function syncGallery() {
     batch.createdAt = runs.reduce((first, r) => r.created_at < first ? r.created_at : first, runs[0].created_at);
     const prompts = [...new Map(runs.map(r => [r.version_id || r.prompt_id + ':' + r.version,
       r.prompt_title + ' · v' + r.version])).values()];
-    const models = [...new Map(runs.map(r => [r.model_id, name(r.model_name)])).values()];
+    const models = [...new Map(runs.map(r => [r.model_id + ':' + (r.config?.reasoningEffort || 'default'), runModelName(r)])).values()];
     batch.heading.replaceChildren(
       h('div', { class: 'section-heading' },
         h('h2', {}, h('time', { dateTime: batch.createdAt }, new Date(batch.createdAt).toLocaleString(undefined,
@@ -116,25 +119,27 @@ function syncGallery() {
           onChange: e => { e.target.checked ? selected.add(r.id) : selected.delete(r.id); updateGallery(); } });
         const previewButton = h('button', { class: 'gallery-preview', 'aria-label': 'Preview ' + r.id,
           onClick: () => open([r.id]) });
-        const title = h('h3', {}), version = badge(''), modelName = h('span', {}), timing = h('code', {}), cost = h('code', {});
+        const title = h('h3', {}), version = badge(''), modelName = h('span', {}), timing = h('code', {}), cost = h('code', {}), usage = tokens();
         const card = h('article', { class: 'gallery-card', 'data-run-id': r.id }, previewButton,
           h('div', { class: 'gallery-card-body' },
             h('div', { class: 'section-heading' }, title, version),
             h('div', { class: 'section-heading' }, modelName,
               h('label', { class: 'inline-check' }, checkbox, 'Compare')),
+            h('div', { class: 'gallery-token-usage' }, usage),
             h('footer', {}, timing, cost)));
-        entry = { card, checkbox, previewButton, title, version, modelName, timing, cost };
+        entry = { card, checkbox, previewButton, title, version, modelName, timing, cost, usage };
         cards.set(r.id, entry);
         batch.grid.append(card);
       }
       entry.run = r;
       entry.title.textContent = r.prompt_title;
       entry.version.textContent = 'v' + r.version;
-      entry.modelName.textContent = name(r.model_name);
+      entry.modelName.textContent = runModelName(r);
       entry.timing.textContent = duration(r);
       entry.cost.textContent = money(r.metrics?.cost);
+      entry.usage.textContent = tokenUsage(r.metrics);
       if (entry.html !== r.html) {
-        entry.previewButton.replaceChildren(preview(r.html, r.prompt_title + ' · ' + r.model_name + ' · ' + r.id,
+        entry.previewButton.replaceChildren(preview(r.html, r.prompt_title + ' · ' + runModelName(r) + ' · ' + r.id,
           { thumbnail: true, width: data.settings.minWidth, height: data.settings.minHeight }));
         entry.html = r.html;
       }
@@ -240,7 +245,7 @@ function comparison() {
                 .filter((r) => !compare.includes(r.id))
                 .map((r) => [
                   r.id,
-                  name(r.model_name) + ' · v' + r.version + ' · ' + r.id.slice(0, 6),
+                  runModelName(r) + ' · v' + r.version + ' · ' + r.id.slice(0, 6),
                 ]),
             ],
             '',
@@ -280,18 +285,19 @@ function comparison() {
               .filter((n) => n.id === r.id || !compare.includes(n.id))
               .map((n) => [
                 n.id,
-                name(n.model_name) + ' · v' + n.version + ' · ' + n.id.slice(0, 6),
+                runModelName(n) + ' · v' + n.version + ' · ' + n.id.slice(0, 6),
               ]),
             r.id,
             (v) => open(compare.map((id, index) => (index === i ? v : id))),
           ),
           h('code', {}, duration(r)),
+          tokens(r.metrics),
           h('code', {}, money(r.metrics?.cost)),
           button(
             '</>',
             () =>
               modal(
-                name(r.model_name),
+                runModelName(r),
                 h(
                   'div',
                   {},
@@ -310,7 +316,7 @@ function comparison() {
               })
             : null,
         ),
-        preview(r.html, r.prompt_title + ' · ' + r.model_name),
+        preview(r.html, r.prompt_title + ' · ' + runModelName(r)),
       ),
     );
   comparisonHost.replaceChildren(
