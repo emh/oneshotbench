@@ -18,7 +18,6 @@ export function number(value, min, max, name, integer = false) {
 export function promptBody(body) {
   return {
     title: text(body.title, 'Title', 160),
-    category: text(body.category, 'Category', 60),
     content: text(body.content, 'Prompt', 100000),
     baseVersionId: body.baseVersionId,
   };

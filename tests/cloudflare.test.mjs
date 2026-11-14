@@ -158,6 +158,27 @@ test('Cloudflare SQLite adapter preserves versions and queue concurrency without
   assert.equal(store.run(ids[1]).status, 'cancelled');
 });
 
+test('prompts need only a title and content; removing categories does not create spurious versions', async t => {
+  const { store, workspace } = fixture(t);
+  const created = await workspace.fetch(request('/api/prompts', { title: 'No category', content: 'Build a page' }));
+  assert.equal(created.status, 201);
+  const prompt = await created.json();
+  assert.ok(!('category' in prompt));
+  // Simulate an older stored prompt with a category that is no longer exposed or editable.
+  store.db.prepare('UPDATE versions SET category=? WHERE id=?').run('Legacy category', prompt.version_id);
+  store.enqueue([prompt.id], ['test/model']);
+  const unchanged = await workspace.fetch(request('/api/prompts/' + prompt.id,
+    { title: prompt.title, content: prompt.content, baseVersionId: prompt.version_id }, 'PATCH'));
+  assert.equal(unchanged.status, 200);
+  assert.equal((await unchanged.json()).version, 1);
+  const changed = await workspace.fetch(request('/api/prompts/' + prompt.id,
+    { title: prompt.title, content: 'New content', baseVersionId: prompt.version_id }, 'PATCH'));
+  const updated = await changed.json();
+  assert.equal(changed.status, 200);
+  assert.equal(updated.version, 2);
+  assert.equal(updated.versions[1].content, prompt.content);
+  assert.ok(updated.versions.every(version => !('category' in version)));
+});
 test('hosted run API selects historical versions without locking the newest draft', async t => {
   const { store, workspace } = fixture(t);
   const prompt = store.createPrompt({ title: 'Original', category: 'Test', content: 'Original text' });

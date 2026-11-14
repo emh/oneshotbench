@@ -18,6 +18,7 @@ export class StoreCore {
     this.db.exec(`PRAGMA foreign_keys=ON;
       CREATE TABLE IF NOT EXISTS settings (id INTEGER PRIMARY KEY CHECK (id=1), value TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS prompts (id TEXT PRIMARY KEY, archived INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL);
+      -- The legacy category column remains for existing databases and snapshot imports.
       CREATE TABLE IF NOT EXISTS versions (id TEXT PRIMARY KEY, prompt_id TEXT NOT NULL REFERENCES prompts(id), version INTEGER NOT NULL, title TEXT NOT NULL, category TEXT NOT NULL, content TEXT NOT NULL, locked_at TEXT, updated_at TEXT NOT NULL, UNIQUE(prompt_id,version));
       CREATE TABLE IF NOT EXISTS runs (id TEXT PRIMARY KEY, batch_id TEXT NOT NULL, version_id TEXT NOT NULL REFERENCES versions(id), model_id TEXT NOT NULL, model_name TEXT NOT NULL, created_at TEXT NOT NULL, started_at TEXT, finished_at TEXT, status TEXT NOT NULL, config TEXT NOT NULL, html TEXT, raw TEXT, error TEXT, metrics TEXT, provider TEXT, response_id TEXT, finish_reason TEXT, resolved_model TEXT);
       CREATE INDEX IF NOT EXISTS runs_date ON runs(created_at DESC);
@@ -28,26 +29,22 @@ export class StoreCore {
       for (const p of [
         [
           'SaaS analytics dashboard',
-          'Dashboard',
           'Build a beautiful analytics dashboard for a fictional SaaS product called Orbit. Include revenue and active-user metrics, an interactive revenue chart with time-range controls, a recent transactions table, and a sidebar. Use realistic sample data. Make filtering and navigation functional. Design it to feel like a carefully crafted modern product.',
         ],
         [
           'Creative studio landing page',
-          'Website',
           'Create a distinctive portfolio website for Forma, an independent design studio. Include an editorial hero, a grid of four case studies, services, a short about section, and a contact form with client-side validation. Use typography, layout, and CSS-generated visuals to give the studio a memorable identity.',
         ],
         [
           'Personal task manager',
-          'Application',
           'Build a polished personal task manager with a sidebar for Today, Upcoming, and Completed. Include sample tasks, adding tasks, marking them complete, priority labels, due dates, text search, and filtering. Keep all state in memory. Make the interactions satisfying and the layout easy to scan.',
         ],
         [
           'Interactive solar system',
-          'Creative',
           'Build an interactive educational solar system explorer. Show the eight planets orbiting the sun using CSS or canvas. Let users pause motion, change orbital speed, and select a planet to see its facts in a detail panel. Include keyboard-accessible controls and a thoughtful dark visual design.',
         ],
       ])
-        this.createPrompt({ title: p[0], category: p[1], content: p[2] });
+        this.createPrompt({ title: p[0], content: p[1] });
     }
   }
   settings() {
@@ -73,14 +70,14 @@ export class StoreCore {
       throw e;
     }
   }
-  createPrompt({ title, category, content }) {
+  createPrompt({ title, content }) {
     return this.transaction(() => {
       const id = crypto.randomUUID(),
         now = new Date().toISOString();
       this.db.prepare('INSERT INTO prompts (id,created_at) VALUES (?,?)').run(id, now);
       this.db
         .prepare('INSERT INTO versions VALUES (?,?,?,?,?,?,NULL,?)')
-        .run(crypto.randomUUID(), id, 1, title, category, content, now);
+        .run(crypto.randomUUID(), id, 1, title, '', content, now);
       return this.prompt(id);
     });
   }
@@ -90,7 +87,7 @@ export class StoreCore {
   prompts(includeArchived = false) {
     const rows = this.db
       .prepare(
-        `SELECT p.id,p.archived,p.created_at,v.id AS version_id,v.version,v.title,v.category,v.content,v.locked_at,v.updated_at,
+        `SELECT p.id,p.archived,p.created_at,v.id AS version_id,v.version,v.title,v.content,v.locked_at,v.updated_at,
       (SELECT COUNT(*) FROM runs r JOIN versions rv ON r.version_id=rv.id WHERE rv.prompt_id=p.id) AS run_count
       FROM prompts p JOIN versions v ON v.prompt_id=p.id WHERE v.version=(SELECT MAX(version) FROM versions WHERE prompt_id=p.id) ${includeArchived ? '' : 'AND p.archived=0'} ORDER BY p.created_at ASC`,
       )
@@ -98,11 +95,11 @@ export class StoreCore {
     return rows.map((row) => ({
       ...row,
       versions: this.db
-        .prepare('SELECT * FROM versions WHERE prompt_id=? ORDER BY version DESC')
+        .prepare('SELECT id,prompt_id,version,title,content,locked_at,updated_at FROM versions WHERE prompt_id=? ORDER BY version DESC')
         .all(row.id),
     }));
   }
-  editPrompt(id, { title, category, content, baseVersionId }) {
+  editPrompt(id, { title, content, baseVersionId }) {
     return this.transaction(() => {
       const current = this.prompt(id);
       if (!current) throw Object.assign(new Error('Prompt not found'), { status: 404 });
@@ -111,17 +108,17 @@ export class StoreCore {
           new Error('This prompt has a newer version. Reopen it before saving.'),
           { status: 409 },
         );
-      if (title === current.title && category === current.category && content === current.content)
+      if (title === current.title && content === current.content)
         return current;
       const now = new Date().toISOString();
       if (current.locked_at)
         this.db
           .prepare('INSERT INTO versions VALUES (?,?,?,?,?,?,NULL,?)')
-          .run(crypto.randomUUID(), id, current.version + 1, title, category, content, now);
+          .run(crypto.randomUUID(), id, current.version + 1, title, '', content, now);
       else
         this.db
-          .prepare('UPDATE versions SET title=?,category=?,content=?,updated_at=? WHERE id=?')
-          .run(title, category, content, now, current.version_id);
+          .prepare('UPDATE versions SET title=?,content=?,updated_at=? WHERE id=?')
+          .run(title, content, now, current.version_id);
       return this.prompt(id);
     });
   }
@@ -197,7 +194,7 @@ export class StoreCore {
       : 'r.id,r.batch_id,r.version_id,r.model_id,r.model_name,r.created_at,r.started_at,r.finished_at,r.status,r.config,r.error,r.metrics,r.provider,r.response_id,r.finish_reason,r.resolved_model';
     return this.db
       .prepare(
-        `SELECT ${fields},v.prompt_id,v.version,v.title AS prompt_title,v.category${details ? ',v.content AS prompt_content' : ''} FROM runs r JOIN versions v ON v.id=r.version_id ${completed ? "WHERE r.status='completed'" : ''} ORDER BY r.created_at DESC,r.rowid DESC`,
+        `SELECT ${fields},v.prompt_id,v.version,v.title AS prompt_title${details ? ',v.content AS prompt_content' : ''} FROM runs r JOIN versions v ON v.id=r.version_id ${completed ? "WHERE r.status='completed'" : ''} ORDER BY r.created_at DESC,r.rowid DESC`,
       )
       .all()
       .map((row) => this.decodeRun(row));
@@ -215,7 +212,7 @@ export class StoreCore {
     return this.decodeRun(
       this.db
         .prepare(
-          'SELECT r.*,v.prompt_id,v.version,v.title AS prompt_title,v.category,v.content AS prompt_content FROM runs r JOIN versions v ON v.id=r.version_id WHERE r.id=?',
+          'SELECT r.*,v.prompt_id,v.version,v.title AS prompt_title,v.content AS prompt_content FROM runs r JOIN versions v ON v.id=r.version_id WHERE r.id=?',
         )
         .get(id),
     );

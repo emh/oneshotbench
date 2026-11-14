@@ -551,7 +551,6 @@ function renderPrompts(container) {
               h(
                 'div',
                 { class: 'actions' },
-                badge(v.category),
                 select('View version for ' + p.title,
                   p.versions.map(version => [version.id, 'v' + version.version + (version.id === p.version_id ? ' · latest' : '')]),
                   v.id, id => {
@@ -589,24 +588,15 @@ function viewPromptVersion(p, v) {
 }
 function editPrompt(p) {
   let title = p?.title || '',
-    category = p?.category || 'Application',
     content = p?.content || '';
   const error = h('div', {});
   let dialog;
   const form = h(
     'form',
     {},
-    h(
-      'div',
-      { class: 'fields' },
-      field(
-        'Name',
-        input('Prompt name', title, (v) => (title = v), { required: true, maxLength: 160 }),
-      ),
-      field(
-        'Category',
-        input('Category', category, (v) => (category = v), { required: true, maxLength: 60 }),
-      ),
+    field(
+      'Name',
+      input('Prompt name', title, (v) => (title = v), { required: true, maxLength: 160 }),
     ),
     field(
       'Prompt',
@@ -650,7 +640,7 @@ function editPrompt(p) {
       await mutate(
         p ? '/prompts/' + p.id : '/prompts',
         p ? 'PATCH' : 'POST',
-        { title, category, content, baseVersionId: p?.version_id },
+        { title, content, baseVersionId: p?.version_id },
         'Prompt saved',
       );
       dialog.close();
