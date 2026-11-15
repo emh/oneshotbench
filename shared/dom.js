@@ -44,7 +44,7 @@ export function validationLabel(value) {
   const s = value.latest;
   return ({ pass: 'Pass', fail: 'Fail', incomplete: 'Incomplete' }[s.outcome] || s.outcome) + ' · ' + s.pass + '/' + s.total + ' checks';
 }
-export async function showValidationHistory(title, load, currentRevisionId) {
+export async function showValidationHistory(title, load, currentRevisionId, { details = true } = {}) {
   const body = h('div', {}, h('p', {}, 'Loading validations…'));
   modal('Validation history · ' + title, body);
   try {
@@ -58,19 +58,19 @@ export async function showValidationHistory(title, load, currentRevisionId) {
           ' ' + s.pass + '/' + s.total + ' passed · r' + row.revision.revision + ' · ' + date(row.created_at),
           row.validation_revision_id !== currentRevisionId ? ' · earlier checklist' : ''),
         h('p', {}, s.fail + ' failed · ' + s.blocked + ' blocked · ' + s.not_tested + ' not tested'),
-        h('p', {}, row.evaluator + ' · validator ' + row.validatorVersion),
-        row.notes ? h('p', { class: 'validation-notes' }, row.notes) : null,
+        details ? h('p', {}, row.evaluator + ' · validator ' + row.validatorVersion) : null,
+        details && row.notes ? h('p', { class: 'validation-notes' }, row.notes) : null,
         h('div', { class: 'table-scroll' }, h('table', {},
-          h('thead', {}, h('tr', {}, ['Check', 'Result', 'Observation and evidence'].map(label => h('th', {}, label)))),
+          h('thead', {}, h('tr', {}, (details ? ['Check', 'Result', 'Observation and evidence'] : ['Check', 'Result']).map(label => h('th', {}, label)))),
           h('tbody', {}, row.checks.map(check => h('tr', {},
             h('td', {}, h('code', {}, check.criterion_id)), h('td', {}, outcomes[check.outcome]),
-            h('td', {}, h('p', {}, check.observed), ...check.evidence.map(ref => h('div', { class: 'evidence-reference' }, ref)))))))),
-        validationsSection(row.revision),
-        h('details', {}, h('summary', {}, 'Assessment metadata'),
-          h('pre', {}, JSON.stringify({ id: row.id, artifactSha256: row.artifact_sha256, environment: row.environment }, null, 2))));
+            details ? h('td', {}, h('p', {}, check.observed), ...check.evidence.map(ref => h('div', { class: 'evidence-reference' }, ref))) : null))))),
+        details ? validationsSection(row.revision) : null,
+        details ? h('details', {}, h('summary', {}, 'Assessment metadata'),
+          h('pre', {}, JSON.stringify({ id: row.id, artifactSha256: row.artifact_sha256, environment: row.environment }, null, 2))) : null);
     })) : empty('No validation attempts recorded.'));
   } catch (error) {
-    if (body.isConnected) body.replaceChildren(errorBox(error.message), button('Retry', () => showValidationHistory(title, load, currentRevisionId)));
+    if (body.isConnected) body.replaceChildren(errorBox(error.message), button('Retry', () => showValidationHistory(title, load, currentRevisionId, { details })));
   }
 }
 export const name = (s) =>
