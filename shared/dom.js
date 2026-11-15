@@ -30,6 +30,49 @@ export const select = (label, values, value, action) =>
 export const input = (label, value, action, attrs = {}) =>
   h('input', { 'aria-label': label, value, onInput: (e) => action(e.target.value), ...attrs });
 export const badge = (text, kind = '') => h('span', { class: 'badge ' + kind }, text);
+export function validationsSection(revision) {
+  if (!revision?.content?.trim()) return null;
+  return h('details', { class: 'validations-section' },
+    h('summary', {}, 'Validations · r' + revision.revision + ' · ' + revision.checks.length + ' checks'),
+    h('pre', { class: 'validation-document' }, revision.content));
+}
+export function validationLabel(value) {
+  if (!value) return '';
+  if (!value.check_count) return value.count ? 'Validation history (' + value.count + ')' : '';
+  if (!value.latest) return 'Not validated';
+  if (!value.latest.current) return 'Checklist updated · revalidation needed';
+  const s = value.latest;
+  return ({ pass: 'Pass', fail: 'Fail', incomplete: 'Incomplete' }[s.outcome] || s.outcome) + ' · ' + s.pass + '/' + s.total + ' checks';
+}
+export async function showValidationHistory(title, load, currentRevisionId) {
+  const body = h('div', {}, h('p', {}, 'Loading validations…'));
+  modal('Validation history · ' + title, body);
+  try {
+    const rows = await load();
+    if (!body.isConnected) return;
+    body.replaceChildren(rows.length ? h('div', { class: 'validation-history' }, rows.map(row => {
+      const s = row.summary;
+      const outcomes = { pass: 'Pass', fail: 'Fail', incomplete: 'Incomplete', blocked: 'Blocked', not_tested: 'Not tested' };
+      return h('details', { class: 'validation-attempt' },
+        h('summary', {}, badge(outcomes[s.outcome], s.outcome === 'pass' ? 'completed' : s.outcome === 'fail' ? 'failed' : ''),
+          ' ' + s.pass + '/' + s.total + ' passed · r' + row.revision.revision + ' · ' + date(row.created_at),
+          row.validation_revision_id !== currentRevisionId ? ' · earlier checklist' : ''),
+        h('p', {}, s.fail + ' failed · ' + s.blocked + ' blocked · ' + s.not_tested + ' not tested'),
+        h('p', {}, row.evaluator + ' · validator ' + row.validatorVersion),
+        row.notes ? h('p', { class: 'validation-notes' }, row.notes) : null,
+        h('div', { class: 'table-scroll' }, h('table', {},
+          h('thead', {}, h('tr', {}, ['Check', 'Result', 'Observation and evidence'].map(label => h('th', {}, label)))),
+          h('tbody', {}, row.checks.map(check => h('tr', {},
+            h('td', {}, h('code', {}, check.criterion_id)), h('td', {}, outcomes[check.outcome]),
+            h('td', {}, h('p', {}, check.observed), ...check.evidence.map(ref => h('div', { class: 'evidence-reference' }, ref)))))))),
+        validationsSection(row.revision),
+        h('details', {}, h('summary', {}, 'Assessment metadata'),
+          h('pre', {}, JSON.stringify({ id: row.id, artifactSha256: row.artifact_sha256, environment: row.environment }, null, 2))));
+    })) : empty('No validation attempts recorded.'));
+  } catch (error) {
+    if (body.isConnected) body.replaceChildren(errorBox(error.message), button('Retry', () => showValidationHistory(title, load, currentRevisionId)));
+  }
+}
 export const name = (s) =>
   s.replace(/^(OpenAI|Anthropic|Google|Meta|DeepSeek|Qwen|Mistral|xAI):\s*/i, '');
 export const runModelName = run => name(run.model_name) +

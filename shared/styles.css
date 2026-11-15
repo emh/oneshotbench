@@ -780,6 +780,19 @@ summary {
 .public-prompt .prompt-results { white-space: nowrap; text-decoration: none; }
 .public-prompt .prompt-results:hover { color: var(--text); border-color: var(--muted); }
 .public-prompt pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.admin-validations { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 14px; }
+.admin-validations h3 { margin: 0; font-size: 13px; }
+.admin-validations .muted { color: var(--muted); }
+.validations-section { border-top: 1px solid var(--line); margin-top: 14px; padding-top: 14px; }
+.validations-section summary, .validation-attempt > summary { cursor: pointer; font-size: 13px; }
+.validation-document { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.65; max-height: 540px; overflow: auto; }
+.validation-history { display: grid; gap: 16px; }
+.validation-attempt { padding: 16px; border: 1px solid var(--line); border-radius: 8px; }
+.validation-attempt td { vertical-align: top; white-space: normal; }
+.validation-attempt td p { margin-top: 0; white-space: pre-wrap; }
+.validation-result { font-size: 11px; }
+.evidence-reference { font: 11px var(--mono); overflow-wrap: anywhere; color: var(--muted); }
+.validation-notes { white-space: pre-wrap; }
 .gallery-content.scatter-content { max-width: 1600px; }
 .plot-panel { padding: 18px; }
 .scatterplot { width: 100%; max-height: 65vh; display: block; }

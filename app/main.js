@@ -14,6 +14,9 @@ import {
   empty,
   errorBox,
   preview,
+  validationsSection,
+  validationLabel,
+  showValidationHistory,
 } from '../shared/dom.js';
 import { readGalleryURL, galleryURL, matchesRun, plotData, plotAxes, hasGalleryFilters, clearGalleryFilters } from '../shared/gallery.js';
 const root = document.getElementById('root');
@@ -410,10 +413,12 @@ function renderPromptIndex() {
     prompts.length ? h('div', { class: 'public-prompts' }, prompts.map(p => {
       const versions = [...p.versions].sort((a, b) => b.version - a.version), latest = versions[0];
       const runs = data.runs.filter(r => r.prompt_id === p.id);
-      const title = h('h2', {}), text = h('pre', {}), resultCount = h('div', { class: 'actions' });
+      const title = h('h2', {}), text = h('pre', {}), validationHost = h('div', {}), resultCount = h('div', { class: 'actions' });
       function showVersion(v) {
         title.textContent = v.title;
         text.textContent = v.content;
+        const validation = validationsSection(v.validations);
+        validationHost.replaceChildren(...(validation ? [validation] : []));
         const count = runs.filter(r => r.version === v.version).length;
         resultCount.replaceChildren(...[
           p.archived ? badge('archived') : null,
@@ -426,7 +431,7 @@ function renderPromptIndex() {
         value => showVersion(versions.find(v => String(v.version) === value))) : null;
       showVersion(latest);
       return h('article', { class: 'panel public-prompt', 'data-prompt-id': p.id },
-        h('div', { class: 'section-heading' }, h('div', { class: 'public-prompt-title' }, title, versionSelect), resultCount), text);
+        h('div', { class: 'section-heading' }, h('div', { class: 'public-prompt-title' }, title, versionSelect), resultCount), text, validationHost);
     })) : empty('No prompts with results')));
 }
 function svgElement(tag, attrs = {}, ...children) {
@@ -557,6 +562,14 @@ async function showSource(run) {
     modal(runModelName(run), h('div', {}, h('h3', {}, 'Prompt · v' + run.version), h('pre', {}, run.prompt_content), h('h3', {}, 'HTML'), h('pre', {}, html)));
   } catch { modal('Preview unavailable', errorBox('Could not load this implementation.')); }
 }
+function runValidations(run) {
+  return showValidationHistory(run.prompt_title + ' · ' + run.id.slice(0, 8), async () => {
+    if (data.mode === 'static') return data.validationHistory?.[run.id] || [];
+    const response = await fetch(previewEndpoint + '?validations=' + encodeURIComponent(run.id));
+    if (!response.ok) throw Error('Could not load validation history.');
+    return (await response.json()).validations;
+  }, run.validation?.current_revision_id);
+}
 function comparison() {
   closePrompt();
   const runs = compare.map(id => data.runs.find(r => r.id === id) || analytics().find(r => r.id === id));
@@ -649,6 +662,7 @@ function comparison() {
           h('code', {}, duration(r)),
           tokens(r.metrics),
           h('code', {}, money(r.metrics?.cost)),
+          r.validation?.count ? button(validationLabel(r.validation), () => runValidations(r), 'text validation-result') : null,
           r.status === 'completed' ? button(
             '</>',
             () => showSource(r),
