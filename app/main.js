@@ -196,7 +196,7 @@ function pumpPreviews() {
     ensureHTML(entry.run).then(html => {
       if (!previewEligible(entry)) { entry.previewState = 'idle'; return; }
       entry.previewButton.replaceChildren(preview(html, entry.run.prompt_title + ' · ' + runModelName(entry.run) + ' · ' + entry.run.id,
-        { thumbnail: true, width: data.settings.minWidth, height: data.settings.minHeight }));
+        { thumbnail: true, width: data.settings.minWidth, height: data.settings.minHeight, runId: entry.run.id }));
       entry.previewState = 'loaded';
       previewObserver.unobserve(entry.card);
     }).catch(() => {
@@ -542,10 +542,10 @@ function render() {
 }
 function resultPreview(run) {
   if (run.status !== 'completed') return empty(run.status + ' · No completed implementation');
-  if (typeof run.html === 'string') return preview(run.html, run.prompt_title + ' · ' + runModelName(run));
+  if (typeof run.html === 'string') return preview(run.html, run.prompt_title + ' · ' + runModelName(run), { runId: run.id });
   const holder = h('div', { class: 'preview-loading' }, 'Loading…');
   ensureHTML(run).then(html => {
-    if (holder.isConnected) holder.replaceWith(preview(html, run.prompt_title + ' · ' + runModelName(run)));
+    if (holder.isConnected) holder.replaceWith(preview(html, run.prompt_title + ' · ' + runModelName(run), { runId: run.id }));
   }).catch(() => {
     if (holder.isConnected) holder.replaceChildren(errorBox('Preview unavailable'), button('Retry', () => holder.replaceWith(resultPreview(run))));
   });

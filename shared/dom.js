@@ -1,3 +1,4 @@
+import { PREVIEW_SANDBOX, previewDocument, previewStorage } from './preview.js';
 export function h(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
   for (const [key, value] of Object.entries(attrs)) {
@@ -135,20 +136,15 @@ export function modal(title, body, footer = []) {
 }
 export const empty = (text) => h('div', { class: 'empty' }, text);
 export const errorBox = (text) => h('div', { class: 'error', role: 'alert' }, text);
-export function preview(html, title, { thumbnail = false, width = 1200, height = 900 } = {}) {
-  const csp =
-    "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' data: blob:; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
+export function preview(html, title, { thumbnail = false, width = 1200, height = 900, runId } = {}) {
   const frame = h('iframe', {
     title,
-    sandbox: 'allow-scripts',
+    sandbox: PREVIEW_SANDBOX,
+    'data-preview-version': '3',
     referrerPolicy: 'no-referrer',
     loading: 'lazy',
-    srcdoc:
-      '<!doctype html><meta http-equiv="Content-Security-Policy" content="' +
-      csp +
-      '">' +
-      html.replace(/<!doctype[^>]*>/i, ''),
   });
+  frame.srcdoc = previewDocument(html, runId ? previewStorage(frame, runId, toast) : undefined);
   const wrapper = h('div', { class: thumbnail ? 'thumbnail' : 'preview' }, frame);
   if (thumbnail) {
     frame.tabIndex = -1;
