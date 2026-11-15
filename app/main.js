@@ -568,7 +568,7 @@ function runValidations(run) {
     const response = await fetch(previewEndpoint + '?validations=' + encodeURIComponent(run.id));
     if (!response.ok) throw Error('Could not load validation history.');
     return (await response.json()).validations;
-  }, run.validation?.current_revision_id);
+  }, run.validation?.current_revision_id, { details: false });
 }
 function comparison() {
   closePrompt();
